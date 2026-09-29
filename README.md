@@ -23,8 +23,32 @@ file silently:
    credentials for everyone on the team (see below).
 4. **Pre-commit hooks** — asks whether this is a **demo** or a **prod** repo
    and sets up the pre-commit checks to match (see below).
+5. **Statusline and notification** *(optional, personal)* — a two-line
+   statusline and a desktop notification when Claude finishes, written into
+   your own `~/.claude/settings.json`.
 
 Step 4 only runs for Python projects in a git repo.
+
+**Statusline and notification.** Step 5 copies `extras/statusline.js` and
+`extras/notify.js` to `~/.claude/invent-kit/` and points your personal
+settings at them. Both are Node scripts, so they run on Windows, macOS and
+Linux without extra tools.
+
+```
+[Opus]  effort:medium  ctx:23%/1000k  $0.4123  today:~$12.34  +120/-45  5h:37%
+(main*)  ~/code/my-repo
+```
+
+- `ctx`: context used (cyan < 50 %, yellow ≥ 50 %, red ≥ 80 %)
+- `$…`: this session's cost as Claude Code reports it
+- `today:~$`: estimated spend across all of today's sessions and subagents, at
+  API list prices (as of 2026-09-25). Not your bill on a subscription. Update
+  the `PRICES` table in the script when prices change.
+- `+/-`: lines added/removed; `5h`: 5-hour rate-limit use (Pro/Max only)
+- git branch (`*` = uncommitted changes) and working directory
+
+The notification reads "Claude finished in <project> - your turn", so
+parallel sessions stay apart.
 
 ### 2. Guards: hooks, deny rules and pre-commit
 
@@ -57,7 +81,7 @@ Our changes are marked `invent patch:` in the scripts and covered by
   ref, so `git push origin feature/main-page` is allowed.
 - All three no longer crash (and so fail open) when `HOME` is unset.
 
-Run the tests with `node --test "hooks/**/*.test.js"` (Node ≥ 21). One
+Run the tests with `node --test "hooks/**/*.test.js" "extras/**/*.test.js"` (Node ≥ 21). One
 upstream manifest test fails by design: it looks for a per-hook `hooks.json`,
 we ship one combined file.
 

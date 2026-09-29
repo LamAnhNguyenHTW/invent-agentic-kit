@@ -1,6 +1,6 @@
 ---
 name: agentic-kit-setup
-description: Walk the user through onboarding their personal and project CLAUDE.md files with Invent's agentic-coding guidelines and workflow, the project's secret-file deny rules, and its pre-commit quality gate. Use when the user runs /agentic-kit-setup or asks to set up Invent's Claude Code conventions.
+description: Walk the user through onboarding their personal and project CLAUDE.md files with Invent's agentic-coding guidelines and workflow, the project's secret-file deny rules, its pre-commit quality gate, and an optional personal statusline and notification. Use when the user runs /agentic-kit-setup or asks to set up Invent's Claude Code conventions.
 ---
 
 Walk the user through this step by step, one question at a time via AskUserQuestion.
@@ -291,6 +291,38 @@ Optional ty block (append to the `repo: local` hooks if the user chose it):
 To switch a repo from demo to prod later, rerun this step, or edit the hooks
 by hand (add `xenon`, drop the `--exit-zero` flags).
 
-## Step 5 — Done
+## Step 5 — Statusline and notification (personal, optional)
+
+Both are personal preferences, so they go into the user's own
+`~/.claude/settings.json`, not the project. Ask via AskUserQuestion
+(multiSelect) which to set up; skip this step if they pick neither:
+
+- **Statusline** — two lines under the prompt:
+  `[Opus]  effort:medium  ctx:23%/1000k  $0.41  today:~$12.34  +120/-45  5h:37%`
+  and `(main*)  ~/code/my-repo`. `today:~$` is an estimate at API list prices,
+  not the bill on a subscription; `5h` only shows on Pro/Max subscriptions.
+- **Notification** — a desktop notification "Claude finished in <project> -
+  your turn" whenever Claude stops. Useful with several sessions in parallel;
+  noisy if you watch Claude work anyway.
+
+1. Copy the chosen scripts from `${CLAUDE_PLUGIN_ROOT}/extras/` (`statusline.js`,
+   `notify.js`) to `~/.claude/invent-kit/`, overwriting older copies from this
+   kit. They are copied because the plugin folder moves on every update.
+2. Read `~/.claude/settings.json` (create it with `{}` if missing) and show the
+   exact change before writing it. Use the absolute home path with forward
+   slashes (`C:/Users/<you>/...` on Windows), since the command may run in Git
+   Bash, which drops backslashes.
+   - **Statusline:** set
+     `"statusLine": { "type": "command", "command": "node <home>/.claude/invent-kit/statusline.js" }`.
+     If a different `statusLine` is already set, show it and ask before replacing it.
+   - **Notification:** add to `hooks.Stop` (keep every existing hook, don't
+     add it twice):
+     `{ "hooks": [ { "type": "command", "command": "node <home>/.claude/invent-kit/notify.js" } ] }`.
+3. Tell the user it takes effect after restarting Claude Code. On Windows, the
+   first notification may need notifications for "Windows PowerShell" allowed
+   under Settings → System → Notifications; on macOS, for "Script Editor".
+   Linux needs `notify-send` (package `libnotify-bin`).
+
+## Step 6 — Done
 
 Confirm all files are in the desired state and summarize what changed.

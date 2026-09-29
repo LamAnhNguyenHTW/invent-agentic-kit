@@ -1,0 +1,11 @@
+{
+  "name": "invent-agentic-kit",
+  "owner": { "name": "Max Grathwohl" },
+  "plugins": [
+    {
+      "name": "invent-agentic-kit",
+      "source": "./",
+      "description": "Skills, commands, agents and hooks for Invent Agentic Kit."
+    }
+  ]
+}

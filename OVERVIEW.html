@@ -1,0 +1,335 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>invent-agentic-kit — v0.2</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  /* Colours and type from the Token Economics deck; layout from the original overview. */
+  :root {
+    --bg: #0a0a0b;
+    --panel: #151417;
+    --panel-2: #1c1b1f;
+    --border: #29282d;
+    --ink: #f6f4f1;
+    --muted: #9b99a1;
+    --faint: #605e66;
+    --coral: #cc6f4e;
+    --coral-dim: rgba(204,111,78,.16);
+    --blue: #5c7cbe;
+    --blue-dim: rgba(92,124,190,.16);
+    --teal: #1f9a80;
+    --teal-dim: rgba(31,154,128,.16);
+    --good: #4caf6d;
+    --warn: #d9a441;
+    --radius: 14px;
+    --display: 'Instrument Sans', 'Inter', system-ui, sans-serif;
+    --body: 'Inter', system-ui, sans-serif;
+    --mono: 'JetBrains Mono', ui-monospace, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background-color: var(--bg);
+    background-image: radial-gradient(circle, rgba(255,255,255,.055) 1px, transparent 1.4px);
+    background-size: 26px 26px;
+    color: var(--ink);
+    font-family: var(--body);
+    line-height: 1.4;
+  }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 56px 28px 80px; }
+  code {
+    font-family: var(--mono); font-size: .92em;
+    background: var(--panel-2); border: 1px solid var(--border); color: var(--ink);
+    padding: 1px 6px; border-radius: 5px;
+  }
+
+  header.hero { text-align: center; margin-bottom: 64px; }
+  .kicker {
+    display: inline-block;
+    font-family: var(--mono); font-size: 11px; font-weight: 500;
+    letter-spacing: .08em; text-transform: uppercase;
+    color: var(--coral); background: var(--coral-dim);
+    border: 1px solid rgba(204,111,78,.4);
+    border-radius: 999px; padding: 6px 14px; margin-bottom: 20px;
+  }
+  h1 {
+    font-family: var(--display); font-weight: 700;
+    font-size: 48px; line-height: 1.08; letter-spacing: -.01em;
+    margin: 0 0 14px; text-wrap: balance;
+  }
+  h1 .accent { color: var(--coral); }
+  .hero p { color: var(--muted); font-size: 17px; line-height: 1.5; max-width: 600px; margin: 0 auto; }
+
+  section { margin-bottom: 64px; }
+  h2 {
+    font-family: var(--body); font-size: 13px; font-weight: 600;
+    letter-spacing: .12em; text-transform: uppercase;
+    color: var(--muted); margin: 0 0 20px;
+  }
+  h2 .accent { color: var(--coral); }
+
+  /* --- flow row with arrows --- */
+  .flow { display: flex; align-items: stretch; }
+  .flow-box {
+    flex: 1 1 0; min-width: 0;
+    background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 18px 16px; text-align: center;
+    display: flex; flex-direction: column; align-items: center; gap: 4px;
+  }
+  .flow-box .n {
+    width: 28px; height: 28px; border-radius: 50%;
+    font-family: var(--mono); font-size: 13px; font-weight: 500;
+    display: flex; align-items: center; justify-content: center;
+    margin-bottom: 8px;
+    color: var(--coral); background: var(--coral-dim); border: 1px solid rgba(204,111,78,.45);
+  }
+  .flow-box.you .n { color: #8ea6db; background: var(--blue-dim); border-color: rgba(92,124,190,.5); }
+  .flow-box.agent .n { color: var(--teal); background: var(--teal-dim); border-color: rgba(31,154,128,.5); }
+  .flow-box.done { border-style: dashed; }
+  .flow-box .t { font-family: var(--display); font-weight: 600; font-size: 16px; }
+  .flow-box .d { color: var(--muted); font-size: 12.5px; line-height: 1.45; }
+  .flow-box .o {
+    margin-top: auto; padding-top: 10px;
+    font-family: var(--mono); font-size: 11px; color: var(--faint);
+    overflow-wrap: anywhere;
+  }
+  .arrow {
+    display: flex; align-items: center; justify-content: center;
+    color: var(--faint); font-size: 18px; padding: 0 5px; flex: 0 0 auto;
+  }
+  .grid.three { grid-template-columns: repeat(3, 1fr); }
+  @media (max-width: 900px) {
+    .flow { flex-wrap: wrap; row-gap: 12px; }
+    .flow-box { flex: 1 1 150px; }
+    .grid.three { grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); }
+  }
+  .note { font-size: 13.5px; line-height: 1.55; color: var(--muted); margin: 18px 4px 0; max-width: 820px; }
+  .note b { color: var(--ink); font-weight: 600; }
+
+  /* --- card grid --- */
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 16px; }
+  .card {
+    background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 20px; display: flex; flex-direction: column; gap: 6px;
+  }
+  .card.skill { border-top: 3px solid var(--blue); }
+  .card.agent { border-top: 3px solid var(--teal); }
+  .card.planned { border-top: 3px solid var(--warn); }
+  .card h3 { font-family: var(--display); font-weight: 600; font-size: 17px; margin: 0; }
+  .card p { font-size: 13px; line-height: 1.5; color: var(--muted); margin: 0; }
+  .tag {
+    align-self: flex-start; margin-top: auto;
+    font-family: var(--mono); font-size: 10.5px; font-weight: 500;
+    letter-spacing: .04em; border-radius: 6px; padding: 3px 8px;
+  }
+  .card .tag { margin-top: 10px; }
+  .tag.skill { color: #8ea6db; background: var(--blue-dim); }
+  .tag.agent { color: var(--teal); background: var(--teal-dim); }
+  .tag.planned { color: var(--warn); background: rgba(217,164,65,.14); }
+
+  /* --- hooks two-column --- */
+  .hooks-cols { display: grid; grid-template-columns: 1.6fr 1fr; gap: 24px; }
+  @media (max-width: 760px) { .hooks-cols { grid-template-columns: 1fr; } }
+  .col-title {
+    font-family: var(--body); font-size: 12px; font-weight: 600;
+    letter-spacing: .1em; text-transform: uppercase; color: var(--ink);
+    margin-bottom: 12px; display: flex; align-items: center; gap: 8px;
+  }
+  .dot { width: 8px; height: 8px; border-radius: 50%; }
+  .dot.live { background: var(--good); }
+  .dot.next { background: var(--warn); }
+  .row {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+    padding: 12px 14px; margin-bottom: 10px; font-size: 13px; line-height: 1.5; color: var(--muted);
+    display: flex; justify-content: space-between; align-items: center; gap: 12px;
+  }
+  .row b { color: var(--ink); font-weight: 600; }
+  .row .when { font-family: var(--mono); font-size: 11px; color: var(--faint); }
+  .status {
+    font-family: var(--mono); font-size: 10.5px; font-weight: 500;
+    text-transform: uppercase; letter-spacing: .04em;
+    padding: 3px 9px; border-radius: 999px; white-space: nowrap;
+  }
+  .status.live { background: rgba(76,175,109,.14); color: var(--good); }
+  .status.next { background: rgba(217,164,65,.14); color: var(--warn); }
+  .sub-note { font-size: 12px; line-height: 1.5; color: var(--faint); margin: -4px 4px 12px; }
+
+  footer {
+    text-align: center; color: var(--faint); font-size: 12.5px;
+    padding-top: 24px; border-top: 1px solid var(--border);
+  }
+  footer .v { color: var(--coral); font-family: var(--mono); }
+
+  @media (max-width: 640px) {
+    .wrap { padding: 40px 16px 64px; }
+    h1 { font-size: 34px; }
+    .flow { flex-direction: column; }
+    .flow-box { flex: none; }
+    .arrow { transform: rotate(90deg); padding: 2px 0; }
+    .row { flex-direction: column; align-items: flex-start; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="hero">
+    <span class="kicker">invent-agentic-kit · plugin · v0.2</span>
+    <h1>One setup step.<br><span class="accent">A shared way of building.</span></h1>
+    <p>A Claude Code plugin that bootstraps Invent's agentic-coding conventions, gives every project a repeatable workflow for bigger changes, and guards against unsafe commands and leaked secrets on its own.</p>
+  </header>
+
+  <section>
+    <h2>Install once, then <span class="accent">/agentic-kit-setup</span> per project</h2>
+    <div class="flow">
+      <div class="flow-box">
+        <div class="n">1</div>
+        <div class="t">Personal CLAUDE.md</div>
+        <div class="d">Checks for Karpathy's 4 core guidelines, offers to add what's missing</div>
+        <div class="o">~/.claude/CLAUDE.md</div>
+      </div>
+      <div class="arrow">→</div>
+      <div class="flow-box">
+        <div class="n">2</div>
+        <div class="t">Project CLAUDE.md</div>
+        <div class="d">Adds the ticket workflow and the tooling summary, updates an older block</div>
+        <div class="o">CLAUDE.md</div>
+      </div>
+      <div class="arrow">→</div>
+      <div class="flow-box">
+        <div class="n">3</div>
+        <div class="t">Secret-file rules</div>
+        <div class="d">Deny rules for .env, keys and credentials, enforced by Claude Code itself</div>
+        <div class="o">.claude/settings.json</div>
+      </div>
+      <div class="arrow">→</div>
+      <div class="flow-box">
+        <div class="n">4</div>
+        <div class="t">Pre-commit checks</div>
+        <div class="d">Demo or prod repo? Sets up radon, xenon, ruff and optional ty as advisory or blocking</div>
+        <div class="o">.pre-commit-config.yaml</div>
+      </div>
+      <div class="arrow">→</div>
+      <div class="flow-box done">
+        <div class="n">5</div>
+        <div class="t">Ready to build</div>
+        <div class="d">Skills, hooks, rules and workflow are active for this project</div>
+      </div>
+    </div>
+    <p class="note">Install: <code>/plugin marketplace add &lt;kit folder or git URL&gt;</code>, then <code>/plugin install invent-agentic-kit@invent-agentic-kit</code>. Setup shows every change and asks before it writes. Step 4 only runs for Python projects in a git repo.</p>
+  </section>
+
+  <section>
+    <h2>Bigger changes &amp; tickets: the suggested loop</h2>
+    <div class="flow">
+      <div class="flow-box"><div class="n">1</div><div class="t">Grill it</div><div class="d">grill-with-docs stress-tests the approach</div><div class="o">GLOSSARY.md · ADRs</div></div>
+      <div class="arrow">→</div>
+      <div class="flow-box"><div class="n">2</div><div class="t">Plan it</div><div class="d">Criteria with a test each, simplified with ponytail</div><div class="o">plans/&lt;branch&gt;.md</div></div>
+      <div class="arrow">→</div>
+      <div class="flow-box you"><div class="n">3</div><div class="t">Approve it</div><div class="d">You read and approve the plan file before code</div><div class="o">your approval</div></div>
+      <div class="arrow">→</div>
+      <div class="flow-box"><div class="n">4</div><div class="t">Implement it</div><div class="d">On a feature branch, subagents capped at Sonnet</div><div class="o">feature branch</div></div>
+      <div class="arrow">→</div>
+      <div class="flow-box"><div class="n">5</div><div class="t">Verify it</div><div class="d">Tests per criterion and pre-commit green</div><div class="o">criteria ticked</div></div>
+      <div class="arrow">→</div>
+      <div class="flow-box agent"><div class="n">6</div><div class="t">Review it</div><div class="d">pr-review checks the branch against the plan</div><div class="o">verdict → PR</div></div>
+    </div>
+    <p class="note"><b>Not required, and nothing enforces it.</b> It helps most when you don't know the codebase yet: grilling makes Claude dig through the code and ask you questions, so you understand it before anything changes. If you already know what to change and where, skip the loop and tell Claude directly; ponytail is always on. The plan file is committed with the change, so every step and every reviewer works from the same acceptance criteria.</p>
+  </section>
+
+  <section>
+    <h2>Skills &amp; agent that shape the coding experience</h2>
+    <div class="grid three">
+      <div class="card skill">
+        <h3>grill-with-docs</h3>
+        <p>Interviews you in rounds, each question with a recommended answer. Writes resolved terms to GLOSSARY.md and hard-to-reverse decisions to ADRs.</p>
+        <span class="tag skill">/grill-with-docs</span>
+      </div>
+      <div class="card skill">
+        <h3>grilling</h3>
+        <p>The interview alone, for a quick stress test of an idea without docs.</p>
+        <span class="tag skill">/grilling</span>
+      </div>
+      <div class="card skill">
+        <h3>ponytail</h3>
+        <p>Forces the simplest solution that works and cuts speculative complexity. Loaded into every session by a hook.</p>
+        <span class="tag skill">always on</span>
+      </div>
+      <div class="card skill">
+        <h3>domain-modeling</h3>
+        <p>Formats for the glossary and ADRs, so design decisions stay traceable. Used by grill-with-docs.</p>
+        <span class="tag skill">SKILL.md</span>
+      </div>
+      <div class="card skill">
+        <h3>agentic-kit-setup</h3>
+        <p>One-time onboarding: CLAUDE.md files, secret-file rules and pre-commit checks, up to the Invent standard.</p>
+        <span class="tag skill">/agentic-kit-setup</span>
+      </div>
+      <div class="card agent">
+        <h3>pr-review agent</h3>
+        <p>Read-only review on Opus: acceptance criteria from the plan file first, then correctness, then over-engineering with the ponytail lens.</p>
+        <span class="tag agent">agent</span>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Quality gates via hooks, rules &amp; pre-commit</h2>
+    <div class="hooks-cols">
+      <div>
+        <div class="col-title"><span class="dot live"></span>Active now</div>
+        <div class="row"><span><b>Deny rules</b> block reading or editing .env, keys and credentials in Claude's file tools and shell <span class="when">· settings.json</span></span><span class="status live">live</span></div>
+        <div class="row"><span><b>protect-secrets</b> blocks reads, copies and leaks of secrets in Read/Edit/Write/Grep/Bash/PowerShell <span class="when">· PreToolUse</span></span><span class="status live">live</span></div>
+        <div class="sub-note">Patched for Windows paths and the PowerShell tool; .env slipped through on Windows before.</div>
+        <div class="row"><span><b>block-dangerous-commands</b> stops destructive commands like <code>rm -rf ~</code> or <code>git reset --hard</code> <span class="when">· PreToolUse</span></span><span class="status live">live</span></div>
+        <div class="row"><span><b>git-safety</b> blocks commits, resets and pushes on main/master. Work on a feature branch <span class="when">· PreToolUse</span></span><span class="status live">live</span></div>
+        <div class="row"><span><b>ponytail-activate</b> loads the ponytail rules into every session <span class="when">· SessionStart</span></span><span class="status live">live</span></div>
+        <div class="row"><span><b>radon · xenon · ruff · ty</b> complexity, lint, format and types on every commit. Blocking in prod repos, advisory in demo repos <span class="when">· pre-commit</span></span><span class="status live">live</span></div>
+      </div>
+      <div>
+        <div class="col-title"><span class="dot next"></span>Roadmap · v0.3</div>
+        <div class="row"><span><b>Testing guidelines</b> which tests a change needs before merge</span><span class="status next">planned</span></div>
+        <div class="row"><span><b>Sandbox guidance</b> hooks and rules match text; a script that opens files itself gets through</span><span class="status next">planned</span></div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Future · v0.3</h2>
+    <div class="grid">
+      <div class="card planned">
+        <h3>Jira in the plan file</h3>
+        <p>A connector fills goal and acceptance criteria in plans/&lt;branch&gt;.md from the ticket. The rest of the workflow stays the same.</p>
+        <span class="tag planned">planned</span>
+      </div>
+      <div class="card planned">
+        <h3>Repo-architecture subagent</h3>
+        <p>Reads the repository and generates a top-level architecture.md, plus a module-scoped CLAUDE.md per module. Keeps the repo usable for agents.</p>
+        <span class="tag planned">planned</span>
+      </div>
+      <div class="card planned">
+        <h3>code-review-graph</h3>
+        <p>Optional for large repos, so pr-review can trace which callers a change affects. Left out for now: extra index, ~30 tools in context.</p>
+        <span class="tag planned">later</span>
+      </div>
+    </div>
+
+    <div style="height:24px"></div>
+
+    <div class="col-title"><span class="dot next"></span>Open questions</div>
+    <div class="row"><span>Which skills/agents can do codebase housekeeping (cleanup, dead code, doc drift)?</span><span class="status next">open</span></div>
+    <div class="row"><span>When is human review required vs. safe to skip?</span><span class="status next">open</span></div>
+    <div class="row"><span>Which connectors do we need besides Jira?</span><span class="status next">open</span></div>
+  </section>
+
+  <footer>
+    invent-agentic-kit <span class="v">v0.2</span> · plugin install, patched safety hooks, secret-file rules, plan file and pr-review agent. Details and reasoning in README.md.
+  </footer>
+
+</div>
+</body>
+</html>

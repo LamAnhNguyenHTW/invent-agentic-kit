@@ -1,5 +1,6 @@
 {
   "name": "invent-agentic-kit",
-  "description": "Skills, commands, agents and hooks for Invent Agentic Kit.",
-  "version": "0.2.0"
+  "description": "Skills, hooks and a review agent for building with Claude Code at Invent.",
+  "version": "0.2.0",
+  "author": { "name": "Max Grathwohl, Lam Anh Nguyen" }
 }

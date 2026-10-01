@@ -312,8 +312,24 @@ by hand (add `xenon`, drop the `--exit-zero` flags).
 ## Step 5 — Statusline and notification (personal, optional)
 
 Both are personal preferences, so they go into the user's own
-`~/.claude/settings.json`, not the project. Ask via AskUserQuestion
-(multiSelect) which to set up; skip this step if they pick neither:
+`~/.claude/settings.json`, not the project.
+
+First check what is already there, before asking anything:
+
+- Read `~/.claude/settings.json`. The statusline counts as set up if
+  `statusLine.command` runs `invent-kit/statusline.js`; the notification if
+  a `hooks.Stop` entry runs `invent-kit/notify.js`.
+- For each one that is set up, compare `~/.claude/invent-kit/<script>` with
+  `${CLAUDE_PLUGIN_ROOT}/extras/<script>`, ignoring line endings
+  (e.g. `git diff --no-index --ignore-cr-at-eol --quiet <a> <b>`).
+
+Then:
+
+- **Both set up, scripts current:** tell the user, skip to Step 6.
+- **Set up, script outdated or missing:** ask whether to update the copy
+  in `~/.claude/invent-kit/` to this kit version. Settings stay unchanged.
+- **Not set up:** ask via AskUserQuestion (multiSelect) only about the
+  ones that are missing; skip the rest of this step if they pick neither:
 
 - **Statusline** — two lines under the prompt:
   `[Opus]  effort:medium  ctx:23%/1000k  $0.41  today:~$12.34  +120/-45  5h:37%`
@@ -324,8 +340,8 @@ Both are personal preferences, so they go into the user's own
   noisy if you watch Claude work anyway.
 
 1. Copy the chosen scripts from `${CLAUDE_PLUGIN_ROOT}/extras/` (`statusline.js`,
-   `notify.js`) to `~/.claude/invent-kit/`, overwriting older copies from this
-   kit. They are copied because the plugin folder moves on every update.
+   `notify.js`) to `~/.claude/invent-kit/`. They are copied because the plugin
+   folder moves on every update. Only copy what the user agreed to above.
 2. Read `~/.claude/settings.json` (create it with `{}` if missing) and show the
    exact change before writing it. Use the absolute home path with forward
    slashes (`C:/Users/<you>/...` on Windows), since the command may run in Git

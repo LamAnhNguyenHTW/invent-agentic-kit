@@ -105,7 +105,7 @@ files passes them untouched, and other languages (JS/TS, …) aren't checked yet
 | `xenon` — complexity gate | — | Blocks functions with complexity ≥ 21 | pre-commit's own environment |
 | `ruff-check` — lint | Lists findings | Blocks on findings | pre-commit's own environment |
 | `ruff-format` — formatting | Formats | Formats | pre-commit's own environment |
-| `ty` — type checker *(optional)* | Lists type errors | Blocks on type errors | project venv (dev dependency) |
+| `ty` — type checker *(optional)* | Lists type errors | Blocks on type errors | project venv (dev dependency), via `uv run --no-sync` so commits never rewrite `uv.lock` |
 
 Demo repos get advisory checks: findings are shown, but the commit goes
 through, so a one-off demo isn't slowed down. The one exception is
@@ -144,7 +144,8 @@ long grilling session.
 5. **Verify it** — tests for every acceptance criterion and pre-commit green;
    criteria get ticked in the plan file.
 6. **Review it** — the `pr-review` agent reads the plan file and checks the
-   branch against it before the PR.
+   branch against it before the PR. It runs on Opus; the Sonnet cap is for
+   implementation subagents only.
 
 The plan file is committed with the change, so human reviewers see the
 criteria too. It is also the hook for a later Jira connector: the ticket

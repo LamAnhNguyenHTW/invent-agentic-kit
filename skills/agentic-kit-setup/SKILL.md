@@ -44,15 +44,15 @@ Guideline block to insert if needed:
    - If missing: ask whether to create it with the Invent baseline below.
    - If it exists: read it and use your judgment to check whether it already
      has an "Invent Project Guidelines" section (substance, not exact title).
-     - If present and marked v0.2: tell the user it's already set up, move
+     - If present and marked v0.3: tell the user it's already set up, move
        to Step 3.
-     - If present but older (v0.1 or unversioned): show the diff to the
+     - If present but older (v0.2, v0.1 or unversioned): show the diff to the
        block below and ask whether to replace the old section with it.
      - If missing: show the block below and ask whether to append it.
 
-Invent baseline block (v0.2):
+Invent baseline block (v0.3):
 
-    ## Invent Project Guidelines (v0.2)
+    ## Invent Project Guidelines (v0.3)
 
     Suggested workflow for bigger changes or tickets. It is not enforced;
     small, low-risk changes don't need it. It pays off most in code you don't
@@ -77,7 +77,9 @@ Invent baseline block (v0.2):
        pre-commit hooks; fix until green. Tick each criterion in the plan
        file once its test passes.
     6. **Review it** — run the `pr-review` agent on the branch; it reads the
-       plan file itself. Address its findings before opening the PR.
+       plan file itself. It runs on Opus: don't override its model, the
+       Sonnet cap is for implementation subagents only. Address its
+       findings before opening the PR.
 
     Commit the plan file with the change, so reviewers see what was asked.
 
@@ -97,7 +99,7 @@ Invent baseline block (v0.2):
         ## Out of scope
         - ...
 
-    ### Invent tooling (v0.2)
+    ### Invent tooling (v0.3)
 
     - **Pre-tool-use hooks (active):** `protect-secrets` (Read/Edit/Write/Grep/
       Bash/PowerShell), `block-dangerous-commands` and `git-safety`
@@ -228,8 +230,10 @@ and skip to Step 5.
 
 radon, xenon and ruff are installed by pre-commit itself in isolated
 environments — nothing to add to the project. `ty` runs from the project
-venv: the block below uses `uv run`; use `poetry run` for poetry, and drop
-the prefix for a plain venv (the venv must be active when committing).
+venv: the block below uses `uv run --no-sync`, so a commit never re-syncs
+the venv or rewrites `uv.lock` (and needs no network); use `poetry run` for
+poetry, and drop the prefix for a plain venv (the venv must be active when
+committing).
 
 Demo block (advisory):
 
@@ -298,10 +302,10 @@ Optional ty block (append to the `repo: local` hooks if the user chose it):
 
           # Type checking from the project venv, so project imports resolve.
           # Prod: blocks on any type error.
-          # Demo: use `uv run ty check --exit-zero` and add `verbose: true`.
+          # Demo: use `uv run --no-sync ty check --exit-zero` and add `verbose: true`.
           - id: ty
             name: ty (type check)
-            entry: uv run ty check
+            entry: uv run --no-sync ty check
             language: system
             types: [python]
             exclude: ^(tests/|scripts/)

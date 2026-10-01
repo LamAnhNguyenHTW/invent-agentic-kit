@@ -866,7 +866,7 @@ describe('Grep tool coverage (demo-take bypass 2)', () => {
 
 describe('hook manifest', () => {
   it('caps the PreToolUse command at 10 seconds', () => {
-    const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, '../hooks/hooks.json'), 'utf8'));
+    const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, '../../hooks.json'), 'utf8'));
     assert.strictEqual(manifest.hooks.PreToolUse[0].hooks[0].timeout, 10);
   });
 });

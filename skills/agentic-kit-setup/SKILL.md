@@ -130,6 +130,24 @@ runs. Project settings are committed, so they protect everyone on the team.
      `permissions.deny` and ask whether to add them. Keep every existing key
      and rule; never remove or reorder the user's rules.
 2. Remind the user to commit `.claude/settings.json`.
+3. If the project is a git repo, check that `.env` files are git-ignored:
+   `git check-ignore -q .env` and `git check-ignore -q .env.local` (they
+   work even if the files don't exist). The deny rules only stop Claude;
+   without an ignore entry a later `git add .` still commits the secrets.
+   - Both ignored: say so and move on.
+   - Otherwise: show the lines below and ask whether to append them to
+     `./.gitignore` (create it if missing). Never remove existing lines.
+
+         .env
+         .env.*
+         !.env.example
+         !.env.sample
+         !.env.template
+
+   - If `.env` is already tracked (`git ls-files --error-unmatch .env`
+     succeeds), the ignore entry won't untrack it: tell the user, and that
+     `git rm --cached .env` stops tracking it while keeping the file. Don't
+     run it yourself. If it was ever pushed, the secrets should be rotated.
 
 Rules (bare names match at any depth in the project; a `!` rule carves an
 exception out of the rules listed before it, so keep the order):

@@ -20,14 +20,17 @@ file silently:
    version of the block if it finds one.
 3. **Deny rules** (`.claude/settings.json`, committed) — Claude Code's own
    permission rules block reading and editing `.env` files, keys and
-   credentials for everyone on the team (see below).
+   credentials for everyone on the team (see below). Also checks that
+   `.env` files are in `.gitignore` and offers to add them.
 4. **Pre-commit hooks** — asks whether this is a **demo** or a **prod** repo
    and sets up the pre-commit checks to match (see below).
 5. **Statusline and notification** *(optional, personal)* — a two-line
    statusline and a desktop notification when Claude finishes, written into
    your own `~/.claude/settings.json`.
 
-Step 4 only runs for Python projects in a git repo.
+Step 4 only runs for Python projects in a git repo. The pre-commit checks
+cover Python files only; there are no checks for JS/TS or other languages
+(Prettier, ESLint, …) yet.
 
 **Statusline and notification.** Step 5 copies `extras/statusline.js` and
 `extras/notify.js` to `~/.claude/invent-kit/` and points your personal
@@ -81,9 +84,7 @@ Our changes are marked `invent patch:` in the scripts and covered by
   ref, so `git push origin feature/main-page` is allowed.
 - All three no longer crash (and so fail open) when `HOME` is unset.
 
-Run the tests with `node --test "hooks/**/*.test.js" "extras/**/*.test.js"` (Node ≥ 21). One
-upstream manifest test fails by design: it looks for a per-hook `hooks.json`,
-we ship one combined file.
+Run the tests with `node --test "hooks/**/*.test.js" "extras/**/*.test.js"` (Node ≥ 21).
 
 **Deny rules** are written into the project's `.claude/settings.json` by
 setup step 3. Claude Code enforces them itself, before any hook runs and on
@@ -95,7 +96,8 @@ is not covered — that needs Claude Code's sandbox.
 
 **Pre-commit hooks** are written into the project's `.pre-commit-config.yaml`
 by setup step 4. They run on every `git commit`, whoever makes the commit —
-Claude or a person:
+Claude or a person. They check **Python files only**: a commit without `.py`
+files passes them untouched, and other languages (JS/TS, …) aren't checked yet.
 
 | Hook | Demo repo | Prod repo | Runs from |
 |---|---|---|---|

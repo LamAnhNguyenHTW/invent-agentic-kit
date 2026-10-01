@@ -279,14 +279,14 @@
       <div class="flow-box">
         <div class="n">3</div>
         <div class="t">Secret-file rules</div>
-        <div class="d">Deny rules for .env, keys and credentials, enforced by Claude Code itself</div>
-        <div class="o">.claude/settings.json</div>
+        <div class="d">Deny rules for .env, keys and credentials, enforced by Claude Code itself. .env git-ignored</div>
+        <div class="o">.claude/settings.json · .gitignore</div>
       </div>
       <div class="arrow">→</div>
       <div class="flow-box">
         <div class="n">4</div>
         <div class="t">Pre-commit checks</div>
-        <div class="d">Demo or prod repo? Sets up radon, xenon, ruff and optional ty as advisory or blocking</div>
+        <div class="d">Demo or prod repo? Sets up radon, xenon, ruff and optional ty as advisory or blocking. Python only</div>
         <div class="o">.pre-commit-config.yaml</div>
       </div>
       <div class="arrow">→</div>
@@ -296,7 +296,7 @@
         <div class="d">Skills, hooks, rules and workflow are active for this project</div>
       </div>
     </div>
-    <p class="note">Install: <code>/plugin marketplace add &lt;kit folder or git URL&gt;</code>, then <code>/plugin install invent-agentic-kit@invent-agentic-kit</code>. Setup shows every change and asks before it writes. Step 4 only runs for Python projects in a git repo.</p>
+    <p class="note">Install: <code>/plugin marketplace add &lt;kit folder or git URL&gt;</code>, then <code>/plugin install invent-agentic-kit@invent-agentic-kit</code>. Setup shows every change and asks before it writes. Step 4 only runs for Python projects in a git repo; its checks cover Python files only.</p>
   </section>
 
   <section>
@@ -365,10 +365,11 @@
         <div class="row"><span><b>git-safety</b> blocks commits, resets and pushes on main/master. Work on a feature branch <span class="when">· PreToolUse</span></span><span class="status live">live</span></div>
         <div class="row"><span><b>ponytail-activate</b> loads the ponytail rules into every session <span class="when">· SessionStart</span></span><span class="status live">live</span></div>
         <div class="row"><span><b>Statusline &amp; notification</b> optional, per person: context, cost, today's spend and git branch under the prompt, plus a desktop notification when Claude finishes <span class="when">· setup step 5</span></span><span class="status live">optional</span></div>
-        <div class="row"><span><b>radon · xenon · ruff · ty</b> complexity, lint, format and types on every commit. Blocking in prod repos, advisory in demo repos <span class="when">· pre-commit</span></span><span class="status live">live</span></div>
+        <div class="row"><span><b>radon · xenon · ruff · ty</b> complexity, lint, format and types of Python files on every commit. Blocking in prod repos, advisory in demo repos <span class="when">· pre-commit</span></span><span class="status live">live</span></div>
       </div>
       <div>
         <div class="col-title"><span class="dot next"></span>Roadmap · v0.3</div>
+        <div class="row"><span><b>Pre-commit for other languages</b> JS/TS (Prettier, ESLint) and others; today only Python is checked</span><span class="status next">planned</span></div>
         <div class="row"><span><b>Testing guidelines</b> which tests a change needs before merge</span><span class="status next">planned</span></div>
         <div class="row"><span><b>Sandbox guidance</b> hooks and rules match text; a script that opens files itself gets through</span><span class="status next">planned</span></div>
       </div>

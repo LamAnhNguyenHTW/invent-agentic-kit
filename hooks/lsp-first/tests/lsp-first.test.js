@@ -68,6 +68,7 @@ describe('/lsp on|off|status', () => {
   const { switchedOn } = require('../lsp-first.js');
   const hook = path.join(__dirname, '..', 'lsp-first.js');
   const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'lsp-toggle-'));
+  spawnSync('git', ['init', '-q', repo]);
   const env = { ...process.env };
   delete env.INVENT_LSP_FIRST;
   const lsp = (arg) => spawnSync('node', [hook, arg], { cwd: repo, encoding: 'utf8', env });
@@ -81,6 +82,12 @@ describe('/lsp on|off|status', () => {
     const s = JSON.parse(fs.readFileSync(local, 'utf8'));
     assert.deepStrictEqual(s, { permissions: { allow: ['Bash(ls)'] }, env: { A: '1', INVENT_LSP_FIRST: 'on' } });
     assert.strictEqual(switchedOn(repo), true);
+  });
+  it('keeps settings.local.json out of git, once', () => {
+    lsp('on');
+    assert.strictEqual(spawnSync('git', ['status', '--porcelain'], { cwd: repo, encoding: 'utf8' }).stdout, '');
+    const exclude = fs.readFileSync(path.join(repo, '.git', 'info', 'exclude'), 'utf8');
+    assert.strictEqual(exclude.split('.claude/settings.local.json').length - 1, 1);
   });
   it('status names what is missing per language', () => assert.match(lsp('status').stdout, /TS\/JS : no LSP \(.*not on PATH/));
   it('off switches it off', () => {

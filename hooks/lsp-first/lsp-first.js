@@ -99,6 +99,17 @@ function availableLangs(cwd) {
     && onPath(LANGS[l].bin) && pluginEnabled(LANGS[l].plugin, cwd));
 }
 
+// A personal file must not end up in a commit: unless git already ignores it,
+// list it in .git/info/exclude, which stays in this clone and changes no file.
+function ignoreLocally(cwd) {
+  const { execFileSync } = require('child_process');
+  const git = (...args) => execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+  try {
+    try { git('check-ignore', '-q', '.claude/settings.local.json'); return; } catch {} // exit 1: not ignored
+    fs.appendFileSync(path.resolve(cwd, git('rev-parse', '--git-path', 'info/exclude')), '\n.claude/settings.local.json\n');
+  } catch {} // not a git repo
+}
+
 // `/lsp on|off|status`: writes INVENT_LSP_FIRST to the repo's settings.local.json
 function toggle(arg, cwd) {
   const file = localSettings(cwd);
@@ -108,6 +119,7 @@ function toggle(arg, cwd) {
     s.env = { ...s.env, INVENT_LSP_FIRST: arg };
     fs.mkdirSync(path.dirname(file), { recursive: true });
     fs.writeFileSync(file, JSON.stringify(s, null, 2) + '\n');
+    ignoreLocally(cwd);
   }
   const lines = [`lsp-first is ${switchedOn(cwd) ? 'ON' : 'OFF'} in ${cwd}` + (arg === 'on' || arg === 'off' ? ` (written to ${file})` : '')];
   for (const [l, { bin, plugin, markers }] of Object.entries(LANGS)) {

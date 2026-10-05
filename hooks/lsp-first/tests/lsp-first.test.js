@@ -19,7 +19,7 @@ const bash = (command, e = env()) => decide('Bash', { command }, e).decision;
 
 describe('symbolOf', () => {
   for (const [p, s] of [['getUser', 'getUser'], ['\\bget_user\\b', 'get_user'], ['def get_user', 'get_user'],
-    ['export function loadConfig', 'loadConfig'], ['class UserService', 'UserService'], ['useState\\(', 'useState']]) {
+    ['export function loadConfig', 'loadConfig'], ['class UserService', 'UserService'], ['useState\\(', 'useState'], ['getUser\\s*\\(', 'getUser'], ['\\bgetUser\\(', 'getUser']]) {
     it(`${p} -> ${s}`, () => assert.strictEqual(symbolOf(p), s));
   }
   for (const p of ['TODO', 'import', 'error', 'ab', 'Failed to load', 'user.*name', '"use client"', 'foo|bar', 'http://x']) {
@@ -41,6 +41,12 @@ describe('Grep tool', () => {
   it('allows a symbol search in .go files (no server of ours)', () => assert.strictEqual(grep({ pattern: 'getUser', glob: '*.go' }), 'allow'));
   it('allows everything without LSP', () => assert.strictEqual(grep({ pattern: 'getUser' }, env([])), 'allow'));
   it('allows .py when only TS has LSP', () => assert.strictEqual(grep({ pattern: 'get_user', glob: '*.py' }, env(['ts'])), 'allow'));
+  it('allows every search once Claude has used LSP in the session', () =>
+    assert.strictEqual(decide('Grep', { pattern: 'getUser' }, { ...env(), lspUsed: true }).decision, 'allow'));
+  it('names a source file of the language for the LSP call', () => {
+    const r = decide('Grep', { pattern: 'getUser' }, { ...env(), sampleFile: (l) => (l === 'ts' ? 'src/api/users.ts' : null) });
+    assert.match(r.reason, /workspaceSymbol, filePath "src\/api\/users\.ts".*query "getUser"/);
+  });
 });
 
 describe('Bash grep/rg', () => {
@@ -89,7 +95,12 @@ describe('/lsp on|off|status', () => {
     const exclude = fs.readFileSync(path.join(repo, '.git', 'info', 'exclude'), 'utf8');
     assert.strictEqual(exclude.split('.claude/settings.local.json').length - 1, 1);
   });
-  it('status names what is missing per language', () => assert.match(lsp('status').stdout, /TS\/JS : no LSP \(.*not on PATH/));
+  // the repo has no package.json/pyproject.toml, whatever this machine has installed
+  it('status names what is missing per language', () => {
+    const out = lsp('status').stdout;
+    assert.match(out, /TS\/JS : no LSP \(no tsconfig\.json/);
+    assert.match(out, /Python: no LSP \(no pyproject\.toml/);
+  });
   it('off switches it off', () => {
     assert.match(lsp('off').stdout, /lsp-first is OFF/);
     assert.strictEqual(switchedOn(repo), false);

@@ -39,7 +39,7 @@
         ]
       },
       {
-        "matcher": "Grep|Bash",
+        "matcher": "Grep|Bash|LSP",
         "hooks": [
           {
             "type": "command",

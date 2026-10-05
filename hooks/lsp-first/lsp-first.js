@@ -38,7 +38,8 @@ const WORDS = new Set(['import', 'export', 'from', 'return', 'async', 'await', '
 // The searched symbol, or null for a text search. Accepts `\b`/`\<…\>` around
 // a name and a leading declaration keyword.
 function symbolOf(pattern) {
-  const p = String(pattern || '').replace(/^\\b|\\b$|^\\<|\\>$/g, '').replace(/\\?\($/, '');
+  // a call-site regex too: `getUser\(`, `getUser\s*\(`
+  const p = String(pattern || '').replace(/(?:\\s\*)?\\?\($/, '').replace(/^\\b|\\b$|^\\<|\\>$/g, '');
   const m = p.match(/^(?:(?:export\s+)?(?:def|class|function|func|fn|interface|type|enum|const|let|var|struct)\s+)?([A-Za-z_$][\w$]{2,})$/);
   return m && !WORDS.has(m[1].toLowerCase()) ? m[1] : null;
 }
@@ -131,32 +132,63 @@ function toggle(arg, cwd) {
 }
 
 // 'deny' the first time a symbol search hits an LSP-covered language, else 'allow'
-function decide(toolName, input, { available, seen }) {
+// Once Claude has used LSP in a session it knows the tool; turning down later
+// greps (often a check for comments and strings) only cost turns (2026-10 test).
+function decide(toolName, input, { available, seen, sampleFile = () => null, lspUsed = false }) {
   const s = searchOf(toolName, input);
-  if (!s) return { decision: 'allow' };
+  if (!s || lspUsed) return { decision: 'allow' };
   const langs = s.langs || available;
   if (!langs.length || !langs.every((l) => available.includes(l))) return { decision: 'allow' };
   const key = JSON.stringify([toolName, input.pattern, input.path, input.glob, input.type, input.command]);
   if (seen(key)) return { decision: 'allow' };
+  // The LSP tool needs a source file of the language as filePath; without one
+  // Claude tried package.json, got an error and fell back to grep (2026-10 test).
+  const file = sampleFile(langs[0]) || `any .${LANGS[langs[0]].exts[0]} file`;
   return {
     decision: 'deny',
-    reason: `LSP first: "${s.symbol}" looks like a symbol. Use the LSP tool (workspaceSymbol to find it, `
-      + 'goToDefinition, findReferences): it is exact and cheaper than a text search. If LSP can\'t answer '
-      + '(not a symbol, server still starting, text in comments or strings), run the same search again and it goes through.',
+    reason: `LSP first: "${s.symbol}" looks like a symbol, so use the LSP tool, which is exact where a text search `
+      + `also hits comments and strings. Start with workspaceSymbol, filePath "${file}" (any ${langs[0] === 'py' ? 'Python' : 'TS/JS'} `
+      + `source file works), query "${s.symbol}"; then findReferences or goToDefinition at the position it returns. `
+      + 'If LSP can\'t answer (not a symbol, server still starting), run the same search again and it goes through.',
   };
 }
 
-// Remembers searches per session in the temp dir, so a repeat goes through.
+// First source file of the language, near the top and outside dependencies
+function sampleFileIn(cwd) {
+  return (lang) => {
+    const exts = LANGS[lang].exts;
+    let dirs = [''];
+    for (let depth = 0; depth < 4 && dirs.length; depth++) {
+      const next = [];
+      for (const rel of dirs) {
+        let entries = [];
+        try { entries = fs.readdirSync(path.join(cwd, rel), { withFileTypes: true }); } catch {}
+        for (const e of entries) {
+          const p = rel ? `${rel}/${e.name}` : e.name;
+          if (e.isFile() && exts.includes(path.extname(e.name).slice(1)) && !e.name.endsWith('.d.ts')) return p;
+          if (e.isDirectory() && !/^(node_modules|\..*|dist|build|out|venv|__pycache__)$/.test(e.name)) next.push(p);
+        }
+      }
+      dirs = next;
+    }
+    return null;
+  };
+}
+
+// Remembers searches (and LSP use) per session in the temp dir, so a repeat goes through.
+// seen(key): true if already there, else records it.
 function seenStore(sessionId) {
   const file = path.join(os.tmpdir(), 'invent-lsp-first', String(sessionId || 'none').replace(/[^\w-]/g, '_'));
-  return (key) => {
-    let keys = [];
-    try { keys = fs.readFileSync(file, 'utf8').split('\n'); } catch {}
-    if (keys.includes(key)) return true;
+  const keys = () => { try { return fs.readFileSync(file, 'utf8').split('\n'); } catch { return []; } };
+  const seen = (key) => {
+    if (keys().includes(key)) return true;
     try { fs.mkdirSync(path.dirname(file), { recursive: true }); fs.appendFileSync(file, key.replace(/\n/g, ' ') + '\n'); } catch {}
     return false;
   };
+  seen.has = (key) => keys().includes(key);
+  return seen;
 }
+const LSP_USED = 'LSP tool used';
 
 async function main() {
   let input = '';
@@ -165,8 +197,10 @@ async function main() {
     const { tool_name, tool_input = {}, session_id, cwd = process.cwd() } = JSON.parse(input);
     if (tool_name === 'Bash' && !/\b(grep|rg)\b/.test(tool_input.command || '')) return console.log('{}');
     if (!switchedOn(cwd)) return console.log('{}');
+    const seen = seenStore(session_id);
+    if (tool_name === 'LSP') { seen(LSP_USED); return console.log('{}'); }
     const r = decide(tool_name, { ...tool_input, command: tool_input.command?.replace(/\n/g, ' ') },
-      { available: availableLangs(cwd), seen: seenStore(session_id) });
+      { available: availableLangs(cwd), seen, sampleFile: sampleFileIn(cwd), lspUsed: seen.has(LSP_USED) });
     if (r.decision !== 'deny') return console.log('{}');
     console.log(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: r.reason } }));
   } catch {

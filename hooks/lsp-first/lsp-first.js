@@ -94,11 +94,21 @@ function switchedOn(cwd) {
   return (set ?? process.env.INVENT_LSP_FIRST) === 'on';
 }
 
-// Languages with a working LSP in this project
-function availableLangs(cwd) {
-  return Object.keys(LANGS).filter((l) => LANGS[l].markers.some((f) => fs.existsSync(path.join(cwd, f)))
-    && onPath(LANGS[l].bin) && pluginEnabled(LANGS[l].plugin, cwd));
+// typescript-language-server drives tsserver, which TypeScript 7 no longer
+// ships: without a project TypeScript <= 6 it fails with "Could not find a
+// valid TypeScript installation" (2026-10 test).
+const hasTsserver = (cwd) => fs.existsSync(path.join(cwd, 'node_modules', 'typescript', 'lib', 'tsserver.js'));
+
+// What keeps a language from having a working LSP here; [] when it's ready
+function missingFor(l, cwd) {
+  const { bin, plugin, markers } = LANGS[l];
+  return [!markers.some((f) => fs.existsSync(path.join(cwd, f))) && `no ${markers.join('/')}`,
+    !onPath(bin) && `${bin} not on PATH`, !pluginEnabled(plugin, cwd) && `${plugin} not enabled`,
+    l === 'ts' && !hasTsserver(cwd) && 'no TypeScript <= 6 in node_modules (TS 7 has no tsserver)'].filter(Boolean);
 }
+
+// Languages with a working LSP in this project
+const availableLangs = (cwd) => Object.keys(LANGS).filter((l) => !missingFor(l, cwd).length);
 
 // A personal file must not end up in a commit: unless git already ignores it,
 // list it in .git/info/exclude, which stays in this clone and changes no file.
@@ -123,9 +133,8 @@ function toggle(arg, cwd) {
     ignoreLocally(cwd);
   }
   const lines = [`lsp-first is ${switchedOn(cwd) ? 'ON' : 'OFF'} in ${cwd}` + (arg === 'on' || arg === 'off' ? ` (written to ${file})` : '')];
-  for (const [l, { bin, plugin, markers }] of Object.entries(LANGS)) {
-    const missing = [!markers.some((f) => fs.existsSync(path.join(cwd, f))) && `no ${markers.join('/')}`,
-      !onPath(bin) && `${bin} not on PATH`, !pluginEnabled(plugin, cwd) && `${plugin} not enabled`].filter(Boolean);
+  for (const l of Object.keys(LANGS)) {
+    const missing = missingFor(l, cwd);
     lines.push(`  ${l === 'ts' ? 'TS/JS ' : 'Python'}: ${missing.length ? 'no LSP (' + missing.join(', ') + ')' : 'LSP ready'}`);
   }
   return lines.join('\n');

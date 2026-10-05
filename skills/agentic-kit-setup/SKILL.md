@@ -430,6 +430,10 @@ nothing in the repo.
    If missing, show the command and ask before running it, from the shell:
    `claude plugin install typescript-lsp@claude-plugins-official` (or
    `pyright-lsp@…`). Tell the user to run `/reload-plugins` afterwards.
+   For TS/JS, `typescript-language-server` needs the project's TypeScript
+   to be 6 or older: TypeScript 7 no longer ships the `tsserver` it drives.
+   If `package.json` has no `typescript` or a 7.x one, tell the user the
+   server won't start, and that `npm install -D typescript@6` fixes it.
 4. Mention the experiment: Claude picks grep or LSP on its own. `/lsp on`
    makes the `lsp-first` hook turn down a text search for a symbol once and
    point Claude to LSP (the same search again goes through); `/lsp off`

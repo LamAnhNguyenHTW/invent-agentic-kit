@@ -101,6 +101,11 @@ describe('/lsp on|off|status', () => {
     assert.match(out, /TS\/JS : no LSP \(no tsconfig\.json/);
     assert.match(out, /Python: no LSP \(no pyproject\.toml/);
   });
+  it('status says a TS project without TypeScript <= 6 has no LSP', () => {
+    fs.writeFileSync(path.join(repo, 'package.json'), '{"name":"x"}');
+    assert.match(lsp('status').stdout, /TS\/JS : no LSP \(.*no TypeScript <= 6 in node_modules/);
+    fs.unlinkSync(path.join(repo, 'package.json'));
+  });
   it('off switches it off', () => {
     assert.match(lsp('off').stdout, /lsp-first is OFF/);
     assert.strictEqual(switchedOn(repo), false);

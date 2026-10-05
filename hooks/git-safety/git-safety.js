@@ -19,20 +19,11 @@
  *   only the complementary coverage above, so the two do not overlap. Raise this
  *   hook to 'strict' (or leave the sibling out) if you run git-safety on its own.
  *
- * Setup (plugin, recommended):
- *   /plugin marketplace add karanb192/claude-code-hooks
- *   /plugin install git-safety@claude-code-hooks
- *
- * Classic setup still works: copy the script somewhere stable and register it
- * in .claude/settings.json:
- * {
- *   "hooks": {
- *     "PreToolUse": [{
- *       "matcher": "Bash",
- *       "hooks": [{ "type": "command", "command": "node /path/to/git-safety.js" }]
- *     }]
- *   }
- * }
+ * invent patch: repo type via INVENT_REPO_TYPE ('demo' | 'prod', default and
+ * fallback 'prod'). Demo repos may commit, merge, rebase, reset and push on
+ * main and merge/close PRs and issues; deleting main (local or remote),
+ * force-pushing to main and gh repo/release deletion stay blocked. Wired by invent-agentic-kit's hooks/hooks.json;
+ * configure via "env" in .claude/settings.json, see the kit's README.
  */
 
 const { execFileSync } = require('child_process');
@@ -44,7 +35,19 @@ const SAFETY_LEVEL = ['critical', 'high', 'strict'].includes(process.env.HOOK_SA
   ? process.env.HOOK_SAFETY_LEVEL
   : DEFAULT_SAFETY_LEVEL;
 
+// invent patch: demo repos relax the main-branch rules (see header)
+const REPO_TYPE = process.env.INVENT_REPO_TYPE === 'demo' ? 'demo' : 'prod';
+const DEMO_ALLOWED = new Set([
+  'commit-on-protected', 'merge-on-protected', 'rebase-on-protected', 'reset-on-protected',
+  'push-on-protected', 'push-main', 'push-master', 'gh-pr-merge', 'gh-pr-close', 'gh-issue-close',
+]);
+
 const PROTECTED_BRANCHES = ['main', 'master'];
+
+// invent patch: `git` plus global options (`-C dir`, `-c k=v`, `--no-pager`), so
+// `git -C ../x commit` doesn't slip past the subcommand rules
+const GIT = String.raw`\bgit(?:\s+(?:-[cC]\s+\S+|--[\w-]+(?:=\S+)?))*\s+`;
+const git = (rest) => new RegExp(GIT + rest);
 
 const PATTERNS = [
   // STRICT - force-push is normally handled by block-dangerous-commands.js.
@@ -55,19 +58,30 @@ const PATTERNS = [
 
   // Block pushing directly to a protected branch by name
   // invent patch: match main/master only as a whole ref (`origin main`, `HEAD:main`, `+main`),
-  // not inside branch names like feature/main-page
-  { level: 'high', id: 'push-main',                 regex: /\bgit\s+push\b.*(?:\s|:|\+)(?:refs\/heads\/)?main(?=\s|$|[;&|])/,   reason: 'Pushing to main is not allowed' },
-  { level: 'high', id: 'push-master',               regex: /\bgit\s+push\b.*(?:\s|:|\+)(?:refs\/heads\/)?master(?=\s|$|[;&|])/, reason: 'Pushing to master is not allowed' },
+  // not inside branch names like feature/main-page, and only within the push command itself
+  { level: 'high', id: 'push-main',                 regex: git(String.raw`push\b[^;&|]*(?:\s|:|\+)(?:refs\/heads\/)?main(?=\s|$|[;&|])`),   reason: 'Pushing to main is not allowed' },
+  { level: 'high', id: 'push-master',               regex: git(String.raw`push\b[^;&|]*(?:\s|:|\+)(?:refs\/heads\/)?master(?=\s|$|[;&|])`), reason: 'Pushing to master is not allowed' },
+
+  // invent patch: deleting or force-overwriting the remote main/master
+  // (`push origin --delete main`, `push origin :main`, `push origin +main`, `push --force origin main`).
+  // In prod push-main/push-master catch these first; demo repos skip those, so these stay in force.
+  { level: 'high', id: 'push-delete-protected',     regex: git(String.raw`push\b(?=[^;&|]*\s(?:-d|--delete)\b)[^;&|]*\s(?:refs\/heads\/)?(?:main|master)(?=\s|$|[;&|])|push\b[^;&|]*\s:(?:refs\/heads\/)?(?:main|master)(?=\s|$|[;&|])`), reason: 'Deleting a protected branch is not allowed' },
+  { level: 'high', id: 'push-force-protected',      regex: git(String.raw`push\b(?=[^;&|]*\s(?:--force(?:-with-lease)?(?:=\S*)?|-f)(?=\s|$|[;&|]))[^;&|]*(?:\s|:)(?:refs\/heads\/)?(?:main|master)(?=\s|$|[;&|])|push\b[^;&|]*(?:\s|:)\+(?:refs\/heads\/)?(?:main|master)(?=\s|$|[;&|])`), reason: 'Force-pushing to a protected branch is not allowed' },
 
   // Block deleting protected branches locally
-  { level: 'high', id: 'branch-delete-protected',   regex: /\bgit\s+branch\s+.*(?:-[dD]|--delete)\s+(?:main|master)\b/, reason: 'Deleting a protected branch is not allowed' },
+  // invent patch: the delete flag anywhere before the name (`branch --delete --force main`, `branch -df main`)
+  { level: 'high', id: 'branch-delete-protected',   regex: git(String.raw`branch\b(?=[^;&|]*\s(?:-[a-zA-Z]*[dD][a-zA-Z]*|--delete)(?=\s))[^;&|]*\s(?:main|master)(?=\s|$|[;&|])`), reason: 'Deleting a protected branch is not allowed' },
 
   // Block direct changes when on a protected branch
-  { level: 'high', id: 'commit-on-protected',       regex: /\bgit\s+commit\b/,                                reason: 'Committing directly on {branch} is not allowed', branchOnly: true },
-  { level: 'high', id: 'merge-on-protected',        regex: /\bgit\s+merge\b/,                                 reason: 'Merging into {branch} is not allowed', branchOnly: true },
-  { level: 'high', id: 'rebase-on-protected',       regex: /\bgit\s+rebase\b/,                                reason: 'Rebasing {branch} is not allowed', branchOnly: true },
-  { level: 'high', id: 'reset-on-protected',        regex: /\bgit\s+reset\b/,                                 reason: 'Resetting {branch} is not allowed', branchOnly: true },
-  { level: 'high', id: 'push-on-protected',         regex: /\bgit\s+push\b/,                                  reason: 'Pushing from {branch} is not allowed', branchOnly: true },
+  { level: 'high', id: 'commit-on-protected',       regex: git(String.raw`commit\b`),                         reason: 'Committing directly on {branch} is not allowed', branchOnly: true },
+  { level: 'high', id: 'merge-on-protected',        regex: git(String.raw`merge\b`),                          reason: 'Merging into {branch} is not allowed', branchOnly: true },
+  { level: 'high', id: 'rebase-on-protected',       regex: git(String.raw`rebase\b`),                         reason: 'Rebasing {branch} is not allowed', branchOnly: true },
+  // invent patch: only resets that move HEAD; unstaging (`git reset HEAD file`, `git reset -- file`) is fine
+  { level: 'high', id: 'reset-on-protected',        regex: git(String.raw`reset\b(?=[^;&|]*(?:--(?:soft|mixed|hard|merge|keep)\b|\s(?:HEAD|@)[~^]|\sorigin\/|\s[0-9a-f]{7,40}(?![\w.\/])))`), reason: 'Resetting {branch} is not allowed', branchOnly: true },
+  { level: 'high', id: 'push-on-protected',         regex: git(String.raw`push\b`),                           reason: 'Pushing from {branch} is not allowed', branchOnly: true },
+  // invent patch: force-push while on main without naming it (`git push -f`). In prod
+  // push-on-protected catches it first; demo repos skip that one.
+  { level: 'high', id: 'push-force-on-protected',   regex: git(String.raw`push\b[^;&|]*\s(?:--force(?:-with-lease)?(?:=\S*)?|-f)(?=\s|$|[;&|])`), reason: 'Force-pushing from {branch} is not allowed', branchOnly: true },
 
   // Block destructive gh CLI operations
   { level: 'high', id: 'gh-pr-merge',               regex: /\bgh\s+pr\s+merge\b/,                             reason: 'Merging PRs via gh CLI is not allowed' },
@@ -90,22 +104,60 @@ function log(data) {
   } catch {}
 }
 
-function getCurrentBranch() {
+// invent patch: branch of the session's cwd (from the hook input), or of the
+// repo named by `git -C <dir>`, not of wherever the hook process happens to run
+function gitDir(cwd, cmd = '') {
+  // `GIT -C dir` too (macOS); `-c` and `-C` differ, so only the command word ignores case
+  const dashC = cmd.match(/\b[Gg][Ii][Tt](?:\s+(?:-c\s+\S+|--[\w-]+(?:=\S+)?))*\s+-C\s+("[^"]*"|'[^']*'|\S+)/);
+  return dashC ? path.resolve(cwd || '.', dashC[1].replace(/^["']|["']$/g, '')) : cwd;
+}
+
+function branchIn(dir) {
   try {
-    return execFileSync('git', ['branch', '--show-current'], { encoding: 'utf-8' }).trim();
+    return execFileSync('git', ['branch', '--show-current'], { cwd: dir || undefined, encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
   } catch {
     return '';
   }
 }
 
-function checkCommand(cmd, branch = null, safetyLevel = SAFETY_LEVEL) {
+// invent patch: the command is checked in several forms and blocked if any
+// matches, so normalizing can only add blocks: as written (a `\` ending a
+// comment, or before CRLF, is no continuation); with `\⏎` deleted as bash does
+// (`r\⏎m` is `rm`); with comments stripped first (`# x\⏎r\⏎m`); with `\⏎` as
+// a space. A stripped comment leaves a `;`: it ends the command like the one
+// it stood in, so a rule can't run on through a heredoc body. A form equal to an earlier one apart from whitespace is skipped:
+// each form multiplies the cost of every rule.
+function shellForms(cmd) {
+  const s = String(cmd || '');
+  const deleted = s.replace(/(?<!\\)\\\n/g, '');
+  const forms = [s, deleted];
+  if (s.includes('#')) forms.push(s.replace(/(^|[\s;&|(])#[^\n]*/g, '$1;').replace(/(?<!\\)\\\n/g, ''));
+  forms.push(s.replace(/\\\r?\n\s*/g, ' '));
+  const seen = new Set();
+  return forms.filter((f) => { const k = f.replace(/\s+/g, ' '); return !seen.has(k) && seen.add(k); });
+}
+// Each form also lowercased: macOS and Windows find `RM`, `/bin/RM`, `/ETC`,
+// `GIT` (flags and $VARS keep their case, `-D` ≠ `-d`).
+const lowerWords = (cmd) => cmd.replace(/(?<![\w$-])[A-Za-z][\w.-]*/g, (w) => w.toLowerCase());
+function variants(cmd) {
+  return [...new Set(shellForms(cmd).flatMap((c) => [c, lowerWords(c)]))];
+}
+
+function checkCommand(cmd, branch = null, safetyLevel = SAFETY_LEVEL, { repoType = REPO_TYPE, cwd } = {}) {
   const threshold = LEVELS[safetyLevel] || LEVELS.high;
+  const forms = variants(cmd);
   for (const p of PATTERNS) {
     if (LEVELS[p.level] > threshold) continue;
-    if (!p.regex.test(cmd)) continue;
+    if (repoType === 'demo' && DEMO_ALLOWED.has(p.id)) continue; // invent patch: demo repos
+    if (!forms.some((c) => p.regex.test(c))) continue;
 
     if (p.branchOnly) {
-      if (!branch) branch = getCurrentBranch();
+      // The `-C` dir differs between forms (`git -C ../main\⏎ commit`): look up
+      // each distinct one, protected if any is.
+      if (!branch) {
+        const branches = [...new Set(forms.map((c) => gitDir(cwd, c)))].map(branchIn);
+        branch = branches.find((b) => PROTECTED_BRANCHES.includes(b)) ?? branches[0];
+      }
       if (!PROTECTED_BRANCHES.includes(branch)) continue;
     }
 
@@ -126,11 +178,11 @@ async function main() {
     if (tool_name !== 'Bash' && tool_name !== 'PowerShell') return console.log('{}'); // invent patch: + PowerShell tool
 
     const cmd = tool_input?.command || '';
-    const result = checkCommand(cmd);
+    const result = checkCommand(cmd, null, SAFETY_LEVEL, { cwd });
 
     if (result.blocked) {
       const p = result.pattern;
-      log({ level: 'BLOCKED', id: p.id, priority: p.level, cmd, session_id, cwd, permission_mode });
+      log({ level: 'BLOCKED', id: p.id, priority: p.level, repo_type: REPO_TYPE, cmd, session_id, cwd, permission_mode });
       return console.log(JSON.stringify({
         hookSpecificOutput: {
           hookEventName: 'PreToolUse',
@@ -150,5 +202,5 @@ async function main() {
 if (require.main === module) {
   main();
 } else {
-  module.exports = { PATTERNS, PROTECTED_BRANCHES, LEVELS, SAFETY_LEVEL, checkCommand };
+  module.exports = { PATTERNS, PROTECTED_BRANCHES, LEVELS, SAFETY_LEVEL, REPO_TYPE, checkCommand };
 }

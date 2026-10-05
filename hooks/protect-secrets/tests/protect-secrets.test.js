@@ -2,8 +2,7 @@
 /**
  * Tests for protect-secrets.js
  *
- * Run: node --test plugins/protect-secrets/tests/protect-secrets.test.js
- * Or:  npm test
+ * Run: node --test hooks/protect-secrets/tests/protect-secrets.test.js
  */
 
 const { describe, it } = require('node:test');
@@ -108,6 +107,14 @@ describe('Unit: checkFilePath()', () => {
     it('blocks .envrc', () => fileBlocked('.envrc', 'envrc'));
   });
 
+  describe('CRITICAL: any letter case (macOS and Windows ignore it)', () => {
+    it('blocks .ENV', () => fileBlocked('/app/.ENV', 'env-file'));
+    it('blocks .Env.Local', () => fileBlocked('/app/.Env.Local', 'env-file'));
+    it('blocks .SSH/ID_RSA', () => fileBlocked('/Users/test/.SSH/ID_RSA', 'ssh-private-key'));
+    it('blocks C:\\Users\\a\\.aws\\Credentials', () => fileBlocked('C:\\Users\\a\\.aws\\Credentials', 'aws-credentials'));
+    it('allows .ENV.EXAMPLE', () => fileAllowed('/app/.ENV.EXAMPLE'));
+  });
+
   describe('ALLOWLIST: .env examples', () => {
     it('allows .env.example', () => fileAllowed('.env.example'));
     it('allows .env.sample', () => fileAllowed('.env.sample'));
@@ -201,6 +208,7 @@ describe('Unit: checkBashCommand()', () => {
     it('blocks cat ~/.ssh/id_rsa', () => bashBlocked('cat ~/.ssh/id_rsa', 'cat-ssh-key'));
     it('blocks less server.pem', () => bashBlocked('less server.pem', 'cat-ssh-key'));
     it('blocks cat ~/.aws/credentials', () => bashBlocked('cat ~/.aws/credentials', 'cat-aws-creds'));
+    it('blocks cat ~\\.aws\\credentials (PowerShell)', () => bashBlocked('cat ~\\.aws\\credentials', 'cat-aws-creds'));
   });
 
   describe('ALLOWLIST in bash', () => {
@@ -215,6 +223,55 @@ describe('Unit: checkBashCommand()', () => {
     it('blocks env at end of chain', () => bashBlocked('cd /app && env', 'env-dump'));
     it('allows env in variable name', () => bashAllowed('echo $NODE_ENV'));
     it('allows envsubst', () => bashAllowed('envsubst < template.yml'));
+    it('blocks gci env:', () => bashBlocked('gci env:', 'ps-env-dump'));
+    it('blocks Get-ChildItem Env:\\', () => bashBlocked('Get-ChildItem Env:\\', 'ps-env-dump'));
+    it('blocks dir env:*', () => bashBlocked('dir env:*', 'ps-env-dump'));
+    it('blocks ls -Path env: | Out-String', () => bashBlocked('ls -Path env: | Out-String', 'ps-env-dump'));
+    it('blocks [Environment]::GetEnvironmentVariables()', () => bashBlocked('[Environment]::GetEnvironmentVariables()', 'ps-env-dump'));
+    it('allows $env:PATH', () => bashAllowed('echo $env:PATH'));
+    for (const cmd of ['gci -Force env:', 'Get-ChildItem -LiteralPath Env:', 'gci -Path:env:', 'gci env:*KEY*',
+      'Get-ChildItem Env:AWS_SECRET_ACCESS_KEY', 'ls -la env:', 'Get-Content env:GITHUB_TOKEN']) {
+      it(`blocks ${cmd}`, () => bashBlocked(cmd, 'ps-env-dump'));
+    }
+    it('allows Get-Item Env:PATH', () => bashAllowed('Get-Item Env:PATH'));
+    it('allows gci $env:USERPROFILE', () => bashAllowed('gci $env:USERPROFILE'));
+    it('blocks PRINTENV (macOS finds it)', () => bashBlocked('PRINTENV', 'env-dump'));
+    it('blocks ENV alone', () => bashBlocked('ENV', 'env-dump'));
+    it('blocks $x = Get-Content env:GITHUB_TOKEN', () => bashBlocked('$x = Get-Content env:GITHUB_TOKEN', 'ps-env-dump'));
+    it('allows a heredoc writing CI YAML with env:', () => bashAllowed("cat > .github/workflows/ci.yml <<'EOF'\njobs:\n  b:\n    env:\n      A: 1\nEOF"));
+    it('allows a commit message heredoc mentioning env:', () => bashAllowed('git commit -m "$(cat <<EOF\nci: add env: block\nEOF\n)"'));
+    it('blocks env after a newline', () => bashBlocked('ls\nenv', 'env-dump'));
+    for (const cmd of ['ls | ENV', 'x=$(ENV)', 'true; Env | sort', 'ls && PrintEnv']) {
+      it(`blocks ${cmd}`, () => bashBlocked(cmd, 'env-dump'));
+    }
+    // upper-case words in a regex alternation are no env dump
+    for (const cmd of ['grep -nE "^(STACK_NAME|AWS_REGION|ENV)\\b" Makefile', 'grep -E "(ENV|STAGE)=" Makefile', 'grep -riE "UPDATE|INSERT|SET |" src']) {
+      it(`allows ${cmd}`, () => bashAllowed(cmd));
+    }
+    // a `;` in a comment stops a rule in every form, so code written through a heredoc isn't a key read
+    it('allows a heredoc of code with a comment and .key', () => bashAllowed("cat >> records.py <<'PY'\n# parsers (tolerant; map labels)\ndef f(field):\n    return field.key\nPY"));
+    it('blocks . ./.env after a newline', () => bashBlocked('true\n. ./.env', 'source-env'));
+    it('blocks > .env after a newline', () => bashBlocked('true\n> .env', 'truncate-secrets'));
+    it('blocks cat .e\\⏎nv (bash deletes the continuation)', () => bashBlocked('cat .e\\\nnv', 'cat-env'));
+    it('blocks cat .env after a comment ending in \\', () => bashBlocked('ls #x\\\ncat .env', 'cat-env'));
+    it('blocks a split .env after a comment ending in \\', () => bashBlocked('ls # x\\\ncat .e\\\nnv', 'cat-env'));
+    it('blocks `Get-ChildItem env: | Out-String` (bash command substitution)', () => bashBlocked('x=`Get-ChildItem env: | Out-String`', 'ps-env-dump'));
+    it('allows a Markdown mention: Run `gci env:` to list', () => bashAllowed("cat > a.md <<'EOF'\nRun `gci env:` to list\nEOF"));
+    for (const cmd of ['powershell.exe -Command "& {Get-ChildItem Env:}"', 'Invoke-Command {gci env:}', '$s = {Get-ChildItem Env:}', '{ gci env:}', 'powershell -c "& {gci env:*}"']) {
+      it(`blocks ${cmd}`, () => bashBlocked(cmd, 'ps-env-dump'));
+    }
+    for (const cmd of ['grep -rn "gci env:" hooks/', "rg 'Get-ChildItem env:' .", "grep -n 'ls env:' README.md", 'echo "type env: production"',
+      'git commit -m "type env: add typing for env vars"', "cat > docs.md <<'EOF'\nRun \"dir env:\" to list variables.\nEOF",
+      "cat > a.ts <<'EOF'\nconst x = { type: 'env:API_KEY' }\nEOF"]) {
+      it(`allows ${JSON.stringify(cmd)}`, () => bashAllowed(cmd));
+    }
+    it('blocks cat .env after \\ CRLF', () => bashBlocked('ls\\\r\ncat .env', 'cat-env'));
+    for (const cmd of ['powershell -Command "Get-ChildItem env:"', "pwsh -c 'gci env:'", 'powershell -NoProfile -c "gc env:GITHUB_TOKEN"',
+      'powershell "dir env:"', 'echo x | powershell -c "gci env:"', 'Invoke-Command { gci env: }', 'if ($true) { Get-ChildItem Env: }',
+      '1..2 | % { gci env: }', '$s = { gci env: }']) {
+      it(`blocks ${cmd}`, () => bashBlocked(cmd, 'ps-env-dump'));
+    }
+    it('allows ls envs/', () => bashAllowed('ls envs/'));
   });
 
   describe('HIGH: Echoing secret variables', () => {
@@ -527,6 +584,31 @@ describe('Unit: checkBashCommand()', () => {
 // Unit Tests - Combined check() function
 // ─────────────────────────────────────────────────────────────────────────────
 
+describe('Speed: a slow regex outlasts the hook timeout, and a timed-out hook does not block', () => {
+  const prefixes = ['env A=1 ', 'sudo ', 'A=1 ', '-x ', '"a" ', '-d x ', '@', '(env:', '(env '];
+  for (const p of prefixes) {
+    it(`answers fast on ${JSON.stringify(p)} x40`, () => {
+      for (const tail of ['', 'llm -a ~/.ssh/id_rsa', 'x']) {
+        const start = Date.now();
+        checkBashCommand(p.repeat(40) + tail, 'strict');
+        assert.ok(Date.now() - start < 200, `slow on ${JSON.stringify(p)} x40 + ${tail}`);
+      }
+    });
+  }
+  it('a long run of content commands in one word answers fast', () => {
+    const start = Date.now();
+    checkBashCommand('\\\n\n' + 'cat='.repeat(2500), 'strict');
+    assert.ok(Date.now() - start < 500);
+  });
+  it('curl -XPOST with long runs answers fast', () => {
+    const start = Date.now();
+    checkBashCommand('curl '.repeat(100) + '-XPOST '.repeat(120) + ' '.repeat(650) + 'x; cp .env /tmp/leak', 'strict');
+    assert.ok(Date.now() - start < 200);
+  });
+  it('still blocks a sink behind many env prefixes', () => bashBlocked('env A=1 '.repeat(40) + 'llm -a ~/.ssh/id_rsa', 'model-cli-secret-file'));
+  it('still blocks a sink behind assignments and two wrappers', () => bashBlocked('A=1 B=2 sudo env C=3 llm < .env', 'model-cli-secret-file'));
+});
+
 describe('Unit: check() combined', () => {
   it('blocks Read on .env', () => {
     const result = check('Read', { file_path: '/app/.env' });
@@ -788,6 +870,11 @@ describe('grep-env bash pattern (demo-take bypass 1)', () => {
   it('blocks awk on .env', () => bashBlocked("awk '/KEY/' .env", 'grep-env'));
   it('blocks fgrep on a nested .env', () => bashBlocked('fgrep KEY services/billing/.env', 'grep-env'));
   it('allows grep on source files', () => bashAllowed('grep -rn TODO src/'));
+  for (const cmd of ["find . -type f | grep -v '/\\.env' ; ls -la", 'ls -a | grep -v "\\.env"', "ls -a | grep -v '\\.env$'"]) {
+    it(`allows a quoted regex filter: ${cmd}`, () => bashAllowed(cmd));
+  }
+  it('blocks a regex filter that also reads .env', () => bashBlocked("grep -v '\\.env' config/.env", 'grep-env'));
+  it('blocks an unquoted escaped .env filename', () => bashBlocked('grep KEY \\.env', 'grep-env'));
   it('allows grep on .env.example', () => bashAllowed('grep STRIPE .env.example'));
   it('allows grep for the word env in code', () => bashAllowed('grep -n environment src/config.js'));
   it('blocks a single-quoted grep of .env', () => bashBlocked("grep 'API_KEY' .env", 'grep-env'));
@@ -866,6 +953,7 @@ describe('Grep tool coverage (demo-take bypass 2)', () => {
 
 describe('hook manifest', () => {
   it('caps the PreToolUse command at 10 seconds', () => {
+    // invent patch: the kit ships one combined manifest, hooks/hooks.json
     const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, '../../hooks.json'), 'utf8'));
     assert.strictEqual(manifest.hooks.PreToolUse[0].hooks[0].timeout, 10);
   });

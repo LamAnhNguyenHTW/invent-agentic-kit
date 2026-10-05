@@ -2,7 +2,7 @@
   "hooks": {
     "SessionStart": [
       {
-        "matcher": "startup|resume|clear|compact",
+        "matcher": "startup|clear|compact",
         "hooks": [
           {
             "type": "command",
@@ -28,11 +28,13 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/block-dangerous-commands/block-dangerous-commands.js\""
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/block-dangerous-commands/block-dangerous-commands.js\"",
+            "timeout": 10
           },
           {
             "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/git-safety/git-safety.js\""
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/git-safety/git-safety.js\"",
+            "timeout": 10
           }
         ]
       }

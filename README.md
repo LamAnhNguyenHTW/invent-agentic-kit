@@ -32,10 +32,13 @@ file silently:
 5. **Pre-commit hooks** — sets up the pre-commit checks for the repo type
    (see below). Shows the current state of the code without changing any
    file; formatting the whole repo is a separate, optional step.
-6. **Statusline and notification** *(optional, personal)* — a two-line
+6. **Code intelligence (LSP)** *(personal)* — for TS/JS and Python (asks
+   which, in an empty repo): installs the language server and Anthropic's
+   `typescript-lsp` / `pyright-lsp` plugin, each after asking (see below).
+7. **Statusline and notification** *(optional, personal)* — a two-line
    statusline and a desktop notification when Claude finishes, written into
    your own `~/.claude/settings.json`.
-7. **Done** — summarizes the changes and points to `/doctor` and
+8. **Done** — summarizes the changes and points to `/doctor` and
    `/doctor prompt-audit` for tidying up instruction files later.
 
 Step 5 only runs for Python projects in a git repo (`.py` files anywhere in
@@ -43,7 +46,17 @@ the repo count). The pre-commit checks cover Python files only; there are no
 checks for JS/TS or other languages (Prettier, ESLint, …) yet. In other repos
 the guidelines block from step 3 leaves the pre-commit part out.
 
-**Statusline and notification.** Step 6 copies `extras/statusline.js` and
+**Code intelligence.** With a language server, Claude sees type errors and
+missing imports right after each edit, and gets an `LSP` tool that finds
+definitions and references by symbol instead of by text. Telling Claude in
+`CLAUDE.md` to prefer it wasn't enough, so the `lsp-first` hook turns down a
+text search for a symbol (`getUser`, `def get_user`) once and points to the
+LSP tool; the same search again goes through, so grep stays the fallback. It
+only acts where the server binary is on the PATH and its plugin is enabled;
+text searches, non-code files and `… | grep` filters pass. It is an
+experiment: to compare, run some sessions with `INVENT_LSP_FIRST=off`.
+
+**Statusline and notification.** Step 7 copies `extras/statusline.js` and
 `extras/notify.js` to `~/.claude/invent-kit/` and points your personal
 settings at them. Both are Node scripts, so they run on Windows, macOS and
 Linux without extra tools.
@@ -74,6 +87,7 @@ installed. They run while Claude works, on Claude's own tool calls:
 | `protect-secrets` | before Read/Edit/Write/Grep/Bash/PowerShell | Blocks reading, editing or leaking `.env` files, keys and credentials |
 | `block-dangerous-commands` | before Bash/PowerShell | Blocks destructive commands (`rm -rf ~`, `Remove-Item -Recurse ~`, force-push to main, `git reset --hard`, …) |
 | `git-safety` | before Bash/PowerShell | Prod: no commits, merges, resets or pushes on main/master; no `gh pr merge`, `gh repo delete`, … Demo: relaxed (see below) |
+| `lsp-first` | before Grep/Bash | Turns down a text search for a symbol once and points to the LSP tool, where a language server runs (off: `INVENT_LSP_FIRST=off`) |
 | `ponytail-activate` | session start | Loads the `ponytail` ruleset into every session (off: `PONYTAIL_MODE=off`) |
 
 The three pre-tool-use hooks log to `~/.claude/hooks-logs/`. They are regex
@@ -112,6 +126,7 @@ so a saved change applies to the next tool call.
 | `INVENT_REPO_TYPE` | `prod` (default) / `demo` | How strict `git-safety` is (table above) |
 | `HOOK_SAFETY_LEVEL` | `critical` / `high` (default) / `strict` | How many rules the three safety hooks apply. `critical` turns `git-safety` off entirely |
 | `HOOK_ASK_CRITICAL`, `HOOK_ASK_HIGH`, `HOOK_ASK_STRICT` | `true` | Ask instead of block for that level (protect-secrets, block-dangerous-commands) |
+| `INVENT_LSP_FIRST` | `off` | Turns the `lsp-first` hook off |
 | `PONYTAIL_MODE` | `off` | Stops loading ponytail at session start. The skill stays installed, so Claude may still invoke it on its own |
 
 `ponytail-activate` runs on startup, `/clear` and compaction, not on resume,
@@ -255,6 +270,8 @@ To see or disable the hooks: `/hooks`, or turn the plugin off in `/plugin`.
 
 - **Node.js ≥ 18** — all Claude Code hooks are Node scripts.
 - **git** — for `git-safety` and the pre-commit hooks.
+- **npm** *(for LSP)* — the language servers install with `npm install -g`
+  (`typescript-language-server typescript`, `pyright`).
 - **Python projects:** a project venv managed by `uv`, `poetry` or pip, plus
   `pre-commit`. Setup offers to install `pre-commit` and `ty` if they're
   missing.

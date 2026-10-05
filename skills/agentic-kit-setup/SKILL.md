@@ -147,6 +147,9 @@ swap in the demo lines listed after it.
       Bash/PowerShell), `block-dangerous-commands` and `git-safety`
       (Bash/PowerShell). `git-safety` blocks commits, merges, rebases,
       resets and pushes on main/master — work on a feature branch.
+    - **Code navigation:** where a language server runs, find definitions
+      and references with the `LSP` tool first. `lsp-first` turns down a text
+      search for a symbol once; if LSP can't answer, repeat the search.
     - **Session-start hook (active):** `ponytail-activate` loads the
       `ponytail` ruleset into every session.
     - **Deny rules:** `.claude/settings.json` blocks reading and editing
@@ -406,7 +409,32 @@ changes the repo type, Steps 3 to 5 update the CLAUDE.md block, the settings
 and these hooks. By hand: change `INVENT_REPO_TYPE`, add `xenon`, drop the
 `--exit-zero` flags.
 
-## Step 6 — Statusline and notification (personal, optional)
+## Step 6 — Code intelligence (LSP, personal)
+
+A language server gives Claude type errors right after each edit and an
+`LSP` tool that finds definitions and references by symbol instead of by
+text. The kit's `lsp-first` hook then turns down a text search for a symbol
+once and points Claude to LSP; the same search again goes through. Language
+servers are installed per machine, so this step changes nothing in the repo.
+
+1. Detect the languages: **TS/JS** (`package.json`, `tsconfig.json` or `.ts`/
+   `.js` files) and **Python** (as in Step 5). If neither is found (e.g. an
+   empty repo before a hackathon), ask via AskUserQuestion (multiSelect)
+   which ones the project will use, with both preselected in the question.
+2. For each language, check the server binary on the PATH (`where` on
+   Windows, `command -v` elsewhere): `typescript-language-server` for TS/JS,
+   `pyright-langserver` for Python. If missing, show the command and ask
+   before running it: `npm install -g typescript-language-server typescript`
+   or `npm install -g pyright` (`pipx install pyright` without Node).
+3. Check `~/.claude/settings.json` `enabledPlugins` for
+   `typescript-lsp@claude-plugins-official` / `pyright-lsp@claude-plugins-official`.
+   If missing, show the command and ask before running it, from the shell:
+   `claude plugin install typescript-lsp@claude-plugins-official` (or
+   `pyright-lsp@…`). Tell the user to run `/reload-plugins` afterwards.
+4. Tell the user how to switch the hook off for themselves or a repo:
+   `"INVENT_LSP_FIRST": "off"` under `env` in a settings file.
+
+## Step 7 — Statusline and notification (personal, optional)
 
 Both are personal preferences, so they go into the user's own
 `~/.claude/settings.json`, not the project.
@@ -422,7 +450,7 @@ First check what is already there, before asking anything:
 
 Then:
 
-- **Both set up, scripts current:** tell the user, skip to Step 7.
+- **Both set up, scripts current:** tell the user, skip to Step 8.
 - **Set up, script outdated or missing:** ask whether to update the copy
   in `~/.claude/invent-kit/` to this kit version. Settings stay unchanged.
 - **Not set up:** ask via AskUserQuestion (multiSelect) only about the
@@ -454,7 +482,7 @@ Then:
    under Settings → System → Notifications; on macOS, for "Script Editor".
    Linux needs `notify-send` (package `libnotify-bin`).
 
-## Step 7 — Done
+## Step 8 — Done
 
 Confirm all files are in the desired state and summarize what changed.
 

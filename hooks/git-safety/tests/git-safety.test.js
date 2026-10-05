@@ -2,8 +2,7 @@
 /**
  * Tests for git-safety.js
  *
- * Run: node --test plugins/git-safety/tests/git-safety.test.js
- * Or:  npm test
+ * Run: node --test hooks/git-safety/tests/git-safety.test.js
  */
 
 const { describe, it, before, after } = require('node:test');
@@ -100,6 +99,12 @@ describe('Unit: checkCommand()', () => {
   });
 
   // ── Deleting protected branches ────────────────────────────────────────
+
+  describe('Line continuations', () => {
+    it('blocks a push split over lines', () => shouldBlock('git push \\\n  origin main', 'push-main', 'feature-branch'));
+    it('blocks a push after a comment ending in \\', () => shouldBlock('git status #x\\\ngit push origin main', 'push-main', 'feature-branch'));
+    it('blocks a push after \\ CRLF', () => shouldBlock('git status\\\r\ngit push origin main', 'push-main', 'feature-branch'));
+  });
 
   describe('Branch delete protected (always blocked)', () => {
     it('blocks git branch -d main', () => shouldBlock('git branch -d main', 'branch-delete-protected'));

@@ -1,6 +1,6 @@
 ---
 name: agentic-kit-setup
-description: Walk the user through onboarding their personal and project CLAUDE.md files with Invent's agentic-coding guidelines and workflow, the project's secret-file deny rules, its pre-commit quality gate, and an optional personal statusline and notification. Use when the user runs /agentic-kit-setup or asks to set up Invent's Claude Code conventions.
+description: Walk the user through onboarding their personal and project CLAUDE.md files with Invent's agentic-coding guidelines and workflow, the repo type (demo or prod), the project's secret-file deny rules, its pre-commit quality gate, and an optional personal statusline and notification. Use when the user runs /agentic-kit-setup or asks to set up Invent's Claude Code conventions.
 ---
 
 Walk the user through this step by step, one question at a time via AskUserQuestion.
@@ -38,29 +38,71 @@ Guideline block to insert if needed:
     ## 4. Goal-Driven Execution
     Turn tasks into verifiable success criteria before looping on them.
 
-## Step 2 — Project CLAUDE.md (./CLAUDE.md)
+## Step 2 — Repo type: demo or prod
 
-1. Check whether `./CLAUDE.md` exists in the current project.
-   - If missing: ask whether to create it with the Invent baseline below.
-   - If it exists: read it and use your judgment to check whether it already
-     has an "Invent Project Guidelines" section (substance, not exact title).
-     - If present and marked v0.3: tell the user it's already set up, move
-       to Step 3.
-     - If present but older (v0.2, v0.1 or unversioned): show the diff to the
+The answer is used by Steps 3 to 5 and by the `git-safety` hook, so ask it
+for every repo, not only Python ones.
+
+1. If `./.claude/settings.json` already sets `env.INVENT_REPO_TYPE`, show the
+   value and ask whether to keep it. Otherwise ask via AskUserQuestion:
+   **"Is this a demo or a prod repo?"**
+   - **Demo** — one-off demo, spike, prototype or hackathon app. Committing
+     and pushing on main is fine: `git-safety` only blocks deleting or
+     force-pushing main/master and `gh repo delete` / `gh release delete`.
+     Pre-commit checks are advisory.
+   - **Prod** — code that will be maintained. `git-safety` blocks commits,
+     merges, rebases, resets and pushes on main/master, and merging or
+     closing PRs and issues via `gh`. Pre-commit checks are blocking.
+   In both, `block-dangerous-commands` keeps blocking `git reset --hard`
+   and `git clean -f`.
+2. Remember the answer; Step 4 writes it to `.claude/settings.json`.
+
+## Step 3 — Project CLAUDE.md (./CLAUDE.md)
+
+Claude Code reads `AGENTS.md` only while the project has no `CLAUDE.md`, so a
+`CLAUDE.md` next to an `AGENTS.md` must import it with an `@AGENTS.md` line.
+
+1. Check whether `./CLAUDE.md` and `./AGENTS.md` exist.
+   - **No `CLAUDE.md`, no `AGENTS.md`:** give the repo a base `CLAUDE.md`
+     first, so the Invent block is not all it holds: tell the user you are
+     starting the built-in `/init`, and invoke the `init` skill with the
+     Skill tool. If the Skill tool can't run it, tell the user to type
+     `/init` and to run `/agentic-kit-setup` again afterwards, and stop.
+     Then show the block below and ask whether to append it.
+   - **No `CLAUDE.md`, but `AGENTS.md`:** don't run `/init`. Show a
+     `CLAUDE.md` of an `@AGENTS.md` line, a blank line and the block below,
+     and ask whether to create it.
+   - **`CLAUDE.md` and `AGENTS.md`, without an `@AGENTS.md` line:** tell the
+     user Claude ignores `AGENTS.md` right now, and ask whether to add
+     `@AGENTS.md` as the first line of `CLAUDE.md`. Then continue as below.
+   - **`CLAUDE.md` exists:** read it and use your judgment to check whether it
+     already has an "Invent Project Guidelines" section (substance, not
+     exact title).
+     - If present, marked v0.4, stating the same repo type, and mentioning
+       pre-commit only if Step 5 applies to this repo: tell the user it's
+       already set up, move to Step 4.
+     - If present but older (v0.3, v0.2, v0.1 or unversioned), stating the
+       other repo type, or differing on pre-commit: show the diff to the
        block below and ask whether to replace the old section with it.
      - If missing: show the block below and ask whether to append it.
 
-Invent baseline block (v0.3):
+Invent baseline block (v0.4). It is written for **prod**; for a **demo** repo,
+swap in the demo lines listed after it.
 
-    ## Invent Project Guidelines (v0.3)
+    ## Invent Project Guidelines (v0.4)
+
+    Repo type: **prod** (`INVENT_REPO_TYPE` in `.claude/settings.json`; don't
+    change it yourself).
 
     Suggested workflow for bigger changes or tickets. It is not enforced;
     small, low-risk changes don't need it. It pays off most in code you don't
     know yet.
 
-    1. **Grill it** — run `/grill-with-docs` to stress-test the approach
-       against the code and existing docs. Put each round of questions into
-       AskUserQuestion (max 4 per call, recommended answer as first option).
+    1. **Grill it** — stress-test the approach against the code and existing
+       docs: ask the user to run `/grill-with-docs` (only the user can start
+       it), or invoke the `grilling` and `domain-modeling` skills yourself.
+       Put each round of questions into AskUserQuestion (max 4 per call,
+       recommended answer as first option).
     2. **Plan it** — create the feature branch, then write the plan to
        `plans/<branch name without prefix>.md` (`feature/PROJ-123-login` →
        `plans/PROJ-123-login.md`) using the template below. Every acceptance
@@ -99,39 +141,76 @@ Invent baseline block (v0.3):
         ## Out of scope
         - ...
 
-    ### Invent tooling (v0.3)
+    ### Invent tooling (v0.4)
 
     - **Pre-tool-use hooks (active):** `protect-secrets` (Read/Edit/Write/Grep/
       Bash/PowerShell), `block-dangerous-commands` and `git-safety`
-      (Bash/PowerShell). `git-safety` blocks commits, merges, resets and
-      pushes on main/master — work on a feature branch.
-    - **Session-start hook (active):** loads the `ponytail` ruleset into every
-      session.
+      (Bash/PowerShell). `git-safety` blocks commits, merges, rebases,
+      resets and pushes on main/master — work on a feature branch.
+    - **Session-start hook (active):** `ponytail-activate` loads the
+      `ponytail` ruleset into every session.
     - **Deny rules:** `.claude/settings.json` blocks reading and editing
       secret files (`.env`, keys, credentials). Don't work around them.
     - **Pre-commit hooks:** Python complexity (radon/xenon), lint and format
-      (ruff), optional type check (ty) — blocking in prod repos, advisory in
-      demo repos; see `.pre-commit-config.yaml`. Never bypass them with
-      `--no-verify`: if a hook blocks, fix the reported issue once; if it
-      still fails, stop and ask the user.
+      (ruff), optional type check (ty) — blocking in this prod repo; see
+      `.pre-commit-config.yaml`. Never bypass them with `--no-verify`: if a
+      hook blocks, fix the reported issue once; if it still fails, stop and
+      ask the user.
     - **Testing guidelines:** none yet — TBD.
 
     If the user asks what Invent's hooks/pre-commit/testing setup is, report
     exactly the state above — don't invent details beyond what's listed.
 
-## Step 3 — Deny rules for secret files (./.claude/settings.json)
+Demo variant: replace these parts of the block, keep everything else.
+
+- In the repo-type line, `**prod**` → `**demo**`.
+- The first sentence of "Plan it" →
+
+      2. **Plan it** — a feature branch is optional in this demo repo. Write
+         the plan to `plans/<branch name without prefix>.md`, or on main to
+         `plans/<short-topic>.md`, using the template below.
+
+- The first sentence of "Implement it" →
+
+      4. **Implement it** — on a feature branch or directly on main; this is
+         a demo repo.
+
+- Append to "Review it": `If you worked on main, tell the agent which plan
+  file and which commits to review.`
+- In the hooks bullet, the `git-safety` sentence →
+
+      `git-safety` is relaxed in this demo repo: it only blocks deleting or
+      force-pushing main/master and `gh repo delete` / `gh release delete`.
+
+- In the pre-commit bullet, `blocking in this prod repo` → `advisory in this
+  demo repo`.
+
+No pre-commit variant: when Step 5 does not apply to this repo (see the check
+at its top), the repo gets no pre-commit hooks, so the block must not
+describe them. In either repo type:
+
+- Leave out the "Pre-commit hooks" bullet of "Invent tooling".
+- In "Verify it", `and the pre-commit hooks; fix until green` → `; fix until
+  green`.
+
+## Step 4 — Project settings: deny rules and repo type (./.claude/settings.json)
 
 Claude Code's own permission rules stop Claude's file tools, and file commands
 like `cat` in Bash, from touching these paths — on every OS, before any hook
-runs. Project settings are committed, so they protect everyone on the team.
+runs. The `env` entry tells the `git-safety` hook the repo type from Step 2;
+hooks read it on every call. Project settings are committed, so both apply
+to everyone on the team.
 
 1. Check whether `./.claude/settings.json` exists.
-   - If missing: show the block below and ask whether to create the file
-     with it.
+   - If missing: show the block below (with the repo type from Step 2) and
+     ask whether to create the file with it.
    - If it exists: read it. Show which of the rules below are missing from
-     `permissions.deny` and ask whether to add them. Keep every existing key
-     and rule; never remove or reorder the user's rules.
-2. Remind the user to commit `.claude/settings.json`.
+     `permissions.deny`, and whether `env.INVENT_REPO_TYPE` is missing or
+     differs, and ask whether to update them. Keep every existing key, env
+     variable and rule; never remove or reorder the user's rules.
+2. Remind the user to commit `.claude/settings.json`. The repo type applies
+   from the next tool call once the file is saved. Someone who needs a
+   different value for themselves can set it in `.claude/settings.local.json`.
 3. If the project is a git repo, check that `.env` files are git-ignored:
    `git check-ignore -q .env` and `git check-ignore -q .env.local` (they
    work even if the files don't exist). The deny rules only stop Claude;
@@ -155,6 +234,9 @@ Rules (bare names match at any depth in the project; a `!` rule carves an
 exception out of the rules listed before it, so keep the order):
 
     {
+      "env": {
+        "INVENT_REPO_TYPE": "prod"
+      },
       "permissions": {
         "deny": [
           "Read(.env)",
@@ -183,25 +265,26 @@ exception out of the rules listed before it, so keep the order):
       }
     }
 
-## Step 4 — Pre-commit hooks (project)
+## Step 5 — Pre-commit hooks (project)
 
 Only applies to Python projects in a git repository (a `pyproject.toml`, a
-`uv.lock`/`poetry.lock`, or `.py` files at the repo root). Otherwise say so
-and skip to Step 5.
+`uv.lock`/`poetry.lock`, or `.py` files anywhere in the repo: Glob `**/*.py`,
+skipping `.venv`, `node_modules` and `.git`). Otherwise say so and skip to
+Step 6.
 
 1. Detect the environment manager:
    - `uv.lock` present → `uv`.
    - `poetry.lock` present (or `[tool.poetry]` in `pyproject.toml`) → `poetry`.
    - Otherwise → treat as a plain venv/pip project.
-2. Ask via AskUserQuestion: **"Is this a demo or a prod repo?"**
-   - **Demo** — one-off demo, spike or prototype. Checks are *advisory*:
-     findings are listed on every commit, but the commit goes through. The
-     one exception is `ruff format`: when it reformats a file, the commit
-     stops once — `git add` and commit again.
-   - **Prod** — code that will be maintained. Checks are *blocking*: a commit
-     fails on any function of rank D or worse (complexity ≥ 21; rank C,
-     11–20, is still listed as a warning), on any `ruff` lint finding, and —
-     if chosen below — on any `ty` type error.
+2. Use the repo type from Step 2 (don't ask again) and tell the user what it
+   means here:
+   - **Demo** — checks are *advisory*: findings are listed on every commit,
+     but the commit goes through. The one exception is `ruff format`: when it
+     reformats a file, the commit stops once — `git add` and commit again.
+   - **Prod** — checks are *blocking*: a commit fails on any function of
+     rank D or worse (complexity ≥ 21; rank C, 11–20, is still listed as a
+     warning), on any `ruff` lint finding, and — if chosen below — on any
+     `ty` type error.
 3. Ask via AskUserQuestion whether to add **ty**, a fast type checker
    (recommended for new code). It runs from the project's venv so it can see
    the project's dependencies, so it must be a dev dependency. Check whether
@@ -221,12 +304,20 @@ and skip to Step 5.
    **never install it silently** — show the exact command for their
    environment (e.g. `uv add --dev pre-commit`, `poetry add --group dev
    pre-commit`, or `pip install pre-commit`) and ask for confirmation first.
-6. Run `pre-commit install` so the hooks fire on `git commit`, then
-   `pre-commit run --all-files` once and show the user the result, so they
-   see the current state of the codebase. In prod mode on an existing
-   codebase this may already fail — tell the user what fails and that they
-   can either fix it or loosen the threshold (see the comments in the
-   blocks); don't fix it yourself here.
+6. Run `pre-commit install` so the hooks fire on `git commit`. Then show the
+   current state of the codebase **without changing any file**:
+   - `SKIP=ruff-format pre-commit run --all-files` (PowerShell:
+     `$env:SKIP='ruff-format'; pre-commit run --all-files`) for lint,
+     complexity and types;
+   - `ruff format --check .` for formatting (`uvx ruff format --check .` if
+     ruff isn't installed; skip it if neither works).
+   Use the `uv run` / `poetry run` prefix from step 1 where needed. In prod
+   mode on an existing codebase this may already fail — tell the user what
+   fails and that they can either fix it or loosen the threshold (see the
+   comments in the blocks); don't fix it yourself here. If files would be
+   reformatted, say how many and ask whether to format them now as a
+   separate commit (`pre-commit run ruff-format --all-files`) or leave it:
+   each file then gets formatted the first time a commit touches it.
 
 radon, xenon and ruff are installed by pre-commit itself in isolated
 environments — nothing to add to the project. `ty` runs from the project
@@ -310,10 +401,12 @@ Optional ty block (append to the `repo: local` hooks if the user chose it):
             types: [python]
             exclude: ^(tests/|scripts/)
 
-To switch a repo from demo to prod later, rerun this step, or edit the hooks
-by hand (add `xenon`, drop the `--exit-zero` flags).
+To switch a repo from demo to prod later, rerun `/agentic-kit-setup`: Step 2
+changes the repo type, Steps 3 to 5 update the CLAUDE.md block, the settings
+and these hooks. By hand: change `INVENT_REPO_TYPE`, add `xenon`, drop the
+`--exit-zero` flags.
 
-## Step 5 — Statusline and notification (personal, optional)
+## Step 6 — Statusline and notification (personal, optional)
 
 Both are personal preferences, so they go into the user's own
 `~/.claude/settings.json`, not the project.
@@ -329,7 +422,7 @@ First check what is already there, before asking anything:
 
 Then:
 
-- **Both set up, scripts current:** tell the user, skip to Step 6.
+- **Both set up, scripts current:** tell the user, skip to Step 7.
 - **Set up, script outdated or missing:** ask whether to update the copy
   in `~/.claude/invent-kit/` to this kit version. Settings stay unchanged.
 - **Not set up:** ask via AskUserQuestion (multiSelect) only about the
@@ -361,6 +454,14 @@ Then:
    under Settings → System → Notifications; on macOS, for "Script Editor".
    Linux needs `notify-send` (package `libnotify-bin`).
 
-## Step 6 — Done
+## Step 7 — Done
 
 Confirm all files are in the desired state and summarize what changed.
+
+Then point to Claude Code's built-in checks for tidying up the instruction
+files later. Both only propose changes and edit nothing without the user's OK:
+
+- `/doctor` — trims `CLAUDE.md` of what Claude can read from the code itself
+  (directory layouts, dependency lists, architecture overviews).
+- `/doctor prompt-audit` — finds outdated, contradicting or broken
+  instructions across `CLAUDE.md`, rules, skills and agents.

@@ -49,3 +49,11 @@ describe('render', () => {
   });
   it('shows nothing it has no data for', () => assert.strictEqual(render({}, null), ''));
 });
+
+describe('home directory', () => {
+  const strip = (s) => s.replace(/\x1b\[[0-9;]*m/g, '');
+  const home = os.homedir().replace(/\\/g, '/');
+  it('shortens paths inside home', () => assert.strictEqual(strip(render({ cwd: home + '/proj' }, null)), '~/proj'));
+  it('leaves a sibling folder that only starts with the home path alone', () =>
+    assert.strictEqual(strip(render({ cwd: home + '2/proj' }, null)), home + '2/proj'));
+});

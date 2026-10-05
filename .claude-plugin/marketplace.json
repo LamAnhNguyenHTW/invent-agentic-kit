@@ -1,6 +1,6 @@
 {
   "name": "invent-agentic-kit",
-  "description": "Invent's shared Claude Code setup: guided onboarding, safety hooks, ticket workflow and PR review.",
+  "description": "Invent's shared Claude Code setup: guided onboarding, safety hooks, a suggested ticket workflow and PR review.",
   "owner": { "name": "Max Grathwohl" },
   "plugins": [
     {

@@ -1,1 +1,6 @@
 /token-economics-deck_v1.52.html
+.DS_Store
+node_modules/
+.claude/worktrees/
+.claude/settings.local.json
+CLAUDE.local.md

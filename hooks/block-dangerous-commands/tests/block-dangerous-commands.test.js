@@ -2,8 +2,7 @@
 /**
  * Tests for block-dangerous-commands.js
  *
- * Run: node --test plugins/block-dangerous-commands/tests/block-dangerous-commands.test.js
- * Or:  npm test
+ * Run: node --test hooks/block-dangerous-commands/tests/block-dangerous-commands.test.js
  */
 
 const { describe, it } = require('node:test');
@@ -98,6 +97,71 @@ describe('Unit: checkCommand()', () => {
     it('blocks rm -rf /etc', () => shouldBlock('rm -rf /etc', 'rm-system'));
     it('blocks rm -rf /usr', () => shouldBlock('rm -rf /usr', 'rm-system'));
     it('allows rm -rf /tmp/test', () => shouldAllow('rm -rf /tmp/test'));
+  });
+
+  describe('CRITICAL: rm with many flags', () => {
+    // A slow regex runs past the hook timeout, and a timed-out hook doesn't block.
+    const flags = '-x '.repeat(40);
+    it('blocks rm with 40 flags and /', () => shouldBlock(`rm ${flags}-rf /`, 'rm-root'));
+    it('blocks rm -rf build / (stray space before /)', () => shouldBlock('rm -rf build /', 'rm-root'));
+    it('every pattern answers fast on a long command', () => {
+      for (const cmd of [`rm ${flags}zz`, `rm ${'-'.repeat(2000)}`, `rm ${'a '.repeat(2000)}`, 'x '.repeat(5000),
+        `rm${' '.repeat(5000)}-rf /`, `rm${'\t'.repeat(5000)}x`, `rm -rf ${'a\\\n'.repeat(1000)}x`,
+        `${'rm -'.repeat(160)}${' '.repeat(1300)}X ; git reset --hard`, `rm ${"'a' ".repeat(1000)}x`]) {
+        const start = Date.now();
+        checkCommand(cmd, 'strict');
+        assert.ok(Date.now() - start < 200, `slow on ${cmd.slice(0, 30)}…`);
+      }
+    });
+  });
+
+  describe('CRITICAL: rm operands and subshells', () => {
+    it('blocks rm with a run of spaces before /', () => shouldBlock(`rm${' '.repeat(3000)}-rf /`, 'rm-root'));
+    it('blocks $(rm -rf ~)', () => shouldBlock('$(rm -rf ~)', 'rm-home'));
+    it('blocks `rm -rf /`', () => shouldBlock('`rm -rf /`', 'rm-root'));
+    for (const cmd of ['(rm -rf *)', 'x=$(rm -rf *)', 'true && (rm -rf ./)', 'f() (rm -rf ~)']) {
+      it(`blocks ${cmd}`, () => shouldBlock(cmd));
+    }
+    for (const cmd of ['cp scripts/rm.sh ~', 'mv rm-old.log ~', './rm.sh ~', '(cd x && rm -rf build)']) {
+      it(`allows ${cmd}`, () => shouldAllow(cmd));
+    }
+    // Windows Git Bash and quoted command names
+    for (const cmd of ['rm.exe -rf ~', '"rm" -rf ~', "'rm' -rf ~", 'rm"" -rf $HOME', '/usr/bin/rm -rf C:/', '"rm" C:\\']) {
+      it(`blocks ${cmd}`, () => shouldBlock(cmd));
+    }
+    for (const cmd of ['"rm.exe" -rf ~', "'rm.exe' -rf $HOME", '"C:\\Program Files\\Git\\usr\\bin\\rm.exe" -rf ~']) {
+      it(`blocks ${cmd}`, () => shouldBlock(cmd, 'ps-rm-home'));
+    }
+  });
+
+  describe('CRITICAL: home targets with a trailing / or /*', () => {
+    for (const cmd of ['rm -rf "$HOME"/*', 'rm -rf "$HOME"/', 'rm -r -f "$HOME"/ && ls']) {
+      it(`blocks ${cmd}`, () => shouldBlock(cmd, 'rm-home-var'));
+    }
+    it('blocks rm -rf ~/*', () => shouldBlock('rm -rf ~/*', 'rm-home'));
+    // a permission rule passed as an argument is not a subshell
+    for (const cmd of ['claude -p x --disallowedTools "Bash(rm *)"', 'claude -p x --allowedTools "Bash(rm -rf ./*)" "Bash(rm -rf ~)"']) {
+      it(`allows ${cmd}`, () => shouldAllow(cmd));
+    }
+    for (const cmd of ['rm -rf build\ncd ~', 'rm -f a.log\ncd ~', '/usr/bin/rm -rf build\ncd ~', 'rm -rf node_modules\ncd C:/', 'rm -rf dist && cd ~']) {
+      it(`allows ${JSON.stringify(cmd)}`, () => shouldAllow(cmd));
+    }
+    it('answers fast on many quoted operands', () => {
+      for (const cmd of [`rm -rf ${"$'a\\'b' ".repeat(500)}x`, `rm -rf ${'"a\\"b" '.repeat(500)}x`, `rm ${"$'".repeat(1000)}`]) {
+        const start = Date.now();
+        checkCommand(cmd, 'strict');
+        assert.ok(Date.now() - start < 200, cmd.slice(0, 30));
+      }
+    });
+  });
+
+  describe('Round 4: everyday rm commands stay allowed', () => {
+    for (const cmd of ['rm -f out.log\ngit add .\ngit commit -m x', 'rm -rf .venv\nuv venv\nuv pip install -e .',
+      'rm -rf dist\ncp -r src/* .', 'rm -f a.txt\ncd /', 'rm -rf tmp\n\nls *',
+      'rm -rf "$HOME"/.cache/foo', 'rm -f "$HOME"/.zcompdump*', 'rm -rf ~/"Library/Caches/foo"', "rm -r ~/'my dir'",
+      'rm -f ./"$name".bak', 'rm -rf ./"build output"', "rm -rf '$HOME'/x"]) {
+      it(`allows ${JSON.stringify(cmd)}`, () => shouldAllow(cmd));
+    }
   });
 
   describe('CRITICAL: rm current directory', () => {

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Protect Secrets - PreToolUse Hook for Read|Edit|Write|Bash
+ * Protect Secrets - PreToolUse Hook for Read|Edit|Write|Grep|Bash|PowerShell
  * Prevents reading, modifying, or exfiltrating sensitive files.
  * Logs to: ~/.claude/hooks-logs/
  *
@@ -12,25 +12,12 @@
  * overwrite installed files). Invalid values fall back to 'high'.
  *
  * Ask mode (opt-in, per level): set HOOK_ASK_CRITICAL / HOOK_ASK_HIGH /
- * HOOK_ASK_STRICT to the literal string "true" in the hook command to have
- * that level prompt the user ("ask") instead of blocking outright ("deny").
- * e.g. "command": "HOOK_ASK_STRICT=true node /path/to/protect-secrets.js"
+ * HOOK_ASK_STRICT to the literal string "true" to have that level prompt the
+ * user ("ask") instead of blocking outright ("deny").
  *
- * Setup (plugin, recommended):
- *   /plugin marketplace add karanb192/claude-code-hooks   # once per machine
- *   /plugin install protect-secrets@claude-code-hooks
- * The plugin registers this hook automatically; restart Claude Code after install.
- *
- * Classic setup (copy this script somewhere stable) still works, via
- * .claude/settings.json:
- * {
- *   "hooks": {
- *     "PreToolUse": [{
- *       "matcher": "Read|Edit|Write|Bash",
- *       "hooks": [{ "type": "command", "command": "node /path/to/protect-secrets.js" }]
- *     }]
- *   }
- * }
+ * invent patch: wired by invent-agentic-kit's hooks/hooks.json (Read, Edit,
+ * Write, Grep, Bash, PowerShell). Set the variables above via "env" in
+ * .claude/settings.json, see the kit's README.
  */
 
 const fs = require('fs');
@@ -104,8 +91,14 @@ const SENSITIVE_FILES = [
 // Delegation sinks: file contents or secret env vars fed to an external model CLI or API host.
 const SINK_CLI = '(?:gemini(?:-cli)?|codex|llm|sgpt|aichat|openai|mods|fabric)';
 // A sink CLI behind env assignments, wrappers (sudo, npx, env, timeout, xargs ...), a path or an npm scope.
+// Assignments, then at most one wrapper whose arguments run up to the CLI: the
+// same commands as a repeated (wrapper|assignment) group, without the
+// exponential backtracking that let `env A=1 ` x18 outlast the hook timeout.
+// The wrapper's arguments advance a whole token at a time; a character-wise
+// lazy span re-scanned the path prefix at every position (cubic on `(env:` x300).
 const SINK_PREFIX = '(?:^|[|;&(`"\'!\\n]|\\b(?:do|then|else)\\b)\\s*'
-  + '(?:(?:sudo|npx|uvx|bunx|pnpm\\s+dlx|command|time|exec|nice|nohup|env|timeout|xargs)\\b[^;|&\\n]*?\\s+|[A-Za-z_][A-Za-z0-9_]*=\\S*\\s+)*'
+  + '(?:[A-Za-z_][A-Za-z0-9_]*=\\S*\\s+)*'
+  + '(?:(?:sudo|npx|uvx|bunx|pnpm\\s+dlx|command|time|exec|nice|nohup|env|timeout|xargs)(?:[ \\t]+[^\\s;|&]+)*?[ \\t]+)?'
   + '(?:[^\\s"\';|&]*\\/)?';
 const SINK_END = '(?=[\\s<]|$)';
 const SINK_CMD = SINK_PREFIX + SINK_CLI + SINK_END;
@@ -121,7 +114,8 @@ const HTTPIE_CMD = '(?<![\\w:/.-])(?:https?|xh)(?=\\s)';
 
 // Secret file names come from the critical and high SENSITIVE_FILES entries; .env swaps in a template-excluding variant.
 const FILE_DIR = '["\']?(?:[^\\s"\';|&<>()]*\\/)?';
-const FILE_ANY = '["\']?[^\\s"\';|&<>()]*?';
+// Capped: an uncapped lazy scan made model-cli-secret-file cubic (`cat=` x950).
+const FILE_ANY = '["\']?[^\\s"\';|&<>()]{0,256}?';
 const ENV_FILE_NAME = '\\.env(?!\\.(?:example|sample|template|schema|defaults)\\b)(?:\\.[^/\\s"\']*)?(?![\\w.])';
 const PATH_ANCHOR = '(?:^|\\/)';
 function fileNameSource(p) {
@@ -170,52 +164,81 @@ const SINK_FILE_FLAG = Object.entries(CLI_FILE_FLAGS)
   .map(([cli, flags]) => sinkCmd(cli) + SEG_QA + '\\s(?:' + flags + ')' + FLAG_ARG)
   .concat([sinkCmd('(?:gemini(?:-cli)?|openai)') + '[^;|&\\n]*' + AT_PATH])
   .join('|');
+// Only the first content command of a segment: a later one sees a subset of
+// the same text, so skipping it changes no result, and each start re-scanned
+// the rest of the segment (`cat=` x950 took seconds).
+const FIRST_CONTENT_CMD = '(?<!' + CONTENT_CMD + '[^;|&\\n]*)' + CONTENT_CMD;
 // A reader with a file operand, so `ps aux | head | llm` is a filter, not a read.
 const READER_CMD = '(?:\\b(?:cat|head|tail|bat|tac|more|less)\\b(?:\\s+-\\S+)*\\s+[^\\s|;&<>-]|\\bgit\\s+(?:diff|show)\\b)';
+
+// invent patch: a reader/copy command counts only where a command starts, so
+// `git commit -m "block cat .env"` or `echo "never type .env"` is no read.
+// Starts: line start, after ; & | ( { ` $( then/do/else, inside `bash -c "…"`
+// or `eval '…'`, after sudo/time/nohup/command/exec/env X=1; `/bin/cat` too.
+// A `\|` is a grep alternation, not a pipe.
+const CMD = String.raw`(?:^|[;&(\n{\x60]|(?<!\\)\||\$\(|\b(?:then|do|else)\b|(?:-c|-Command|eval)\s+["'])\s*`
+  + String.raw`(?:(?:sudo|time|nohup|command|exec|env(?:\s+\w+=\S*)*)\s+(?:-\S+\s+)*)*(?:[\w.\/-]*\/)?`;
+const cmdRule = (rest) => new RegExp(CMD + rest, 'i');
+
+// invent patch: grep/rg/awk read .env only when it is a file operand. The first
+// operand is the pattern (`grep -rn ".env" src/` searches src/ for the text),
+// unless -e/-f give it; an --include/--glob for .env reads them all.
+const G_WORD = String.raw`(?:'[^']*'|"(?:[^"\\]|\\.)*"|\\.|[^\s|;&'"\\])+`;
+const G_ENV = String.raw`["']?(?:[^\s"';|&<>()]*\/)?["']?\\?\.env(?:\.[\w.-]*)?["']?(?=\s|$|[;|&<>)])`;
+const G_CMD = CMD + String.raw`(?:grep|rg|egrep|fgrep|ag|awk|gawk)\b`;
+const GREP_ENV = G_CMD + String.raw`(?:\s+-\S*)*\s+(?!-)${G_WORD}(?:\s+${G_WORD})*?\s+${G_ENV}`
+  + '|' + G_CMD + String.raw`[^|;&\n]*\s(?:-e|-f|--regexp|--file)\b[^|;&\n]*\s${G_ENV}`
+  + '|' + G_CMD + String.raw`[^|;&\n]*(?:--include|--glob|-g)[=\s]*["']?[^\s"']*\.env\b`;
 
 // Bash patterns that expose or exfiltrate secrets
 const BASH_PATTERNS = [
   // CRITICAL
-  // A word is a run of pieces (quoted span, escape, plain char). Each kind starts with a
-  // different character, so a non-match stays linear, and `-F'='` or `".env"` still match.
-  { level: 'critical', id: 'grep-env',           regex: /\b(grep|rg|egrep|fgrep|ag|awk|gawk)\b(?:\s+(?:'[^']*'|"(?:[^"\\]|\\[\s\S])*"|\\[\s\S]|[^\s|;&"'\\])+)*\s+(?:'[^']*'|"(?:[^"\\]|\\[\s\S])*"|\\[\s\S]|[^\s|;&"'\\])*?(?:'[^']*|"[^"]*)?\.env\b/i, reason: 'Reading .env via text tools exposes secrets' },
-  { level: 'critical', id: 'cat-env',            regex: /\b(cat|less|head|tail|more|bat|view)\s+[^|;]*\.env\b/i,           reason: 'Reading .env file exposes secrets' },
-  { level: 'critical', id: 'cat-ssh-key',        regex: /\b(cat|less|head|tail|more|bat)\s+[^|;]*(id_rsa|id_ed25519|id_ecdsa|id_dsa|\.pem|\.key)\b/i, reason: 'Reading private key' },
-  { level: 'critical', id: 'cat-aws-creds',      regex: /\b(cat|less|head|tail|more)\s+[^|;]*\.aws\/credentials/i,         reason: 'Reading AWS credentials' },
+  { level: 'critical', id: 'grep-env',           regex: new RegExp(GREP_ENV, 'i'), reason: 'Reading .env via text tools exposes secrets' },
+  { level: 'critical', id: 'cat-env',            regex: cmdRule(String.raw`(cat|less|head|tail|more|bat|view)\s+[^|;]*\.env\b`),           reason: 'Reading .env file exposes secrets' },
+  { level: 'critical', id: 'cat-ssh-key',        regex: cmdRule(String.raw`(cat|less|head|tail|more|bat)\s+[^|;]*(id_rsa|id_ed25519|id_ecdsa|id_dsa|\.pem|\.key)\b`), reason: 'Reading private key' },
+  { level: 'critical', id: 'cat-aws-creds',      regex: cmdRule(String.raw`(cat|less|head|tail|more)\s+[^|;]*\.aws[\\/]credentials`),     reason: 'Reading AWS credentials' },
   // invent patch: PowerShell equivalents of the cat-* rules above
-  { level: 'critical', id: 'ps-read-env',        regex: /\b(Get-Content|gc|type|Select-String|sls|Copy-Item)\b[^|;]*\.env\b(?!\.(example|sample|template|schema|defaults)\b)/i, reason: 'Reading .env file exposes secrets' },
-  { level: 'critical', id: 'ps-read-key',        regex: /\b(Get-Content|gc|type)\b[^|;]*(id_rsa|id_ed25519|id_ecdsa|\.pem|\.key|\.aws[\\/]credentials)\b/i, reason: 'Reading private key or credentials' },
+  { level: 'critical', id: 'ps-read-env',        regex: cmdRule(String.raw`(Get-Content|gc|type|Select-String|sls|Copy-Item)\b[^|;]*\.env\b(?!\.(example|sample|template|schema|defaults)\b)`), reason: 'Reading .env file exposes secrets' },
+  { level: 'critical', id: 'ps-read-key',        regex: cmdRule(String.raw`(Get-Content|gc|type)\b[^|;]*(id_rsa|id_ed25519|id_ecdsa|\.pem|\.key|\.aws[\\/]credentials)\b`), reason: 'Reading private key or credentials' },
 
   // HIGH - Environment exposure
-  { level: 'high', id: 'env-dump',               regex: /\bprintenv\b|(?:^|[;&|(]\s*)(?:env|set|export|declare\s+-x)\s*(?:$|[;&|)])/, reason: 'Environment dump may expose secrets' },
+  // invent patch: a newline separates commands too
+  { level: 'high', id: 'env-dump',               regex: /\bprintenv\b|(?:^|[;&|(\n]\s*)(?:env|set|export|declare\s+-x)\s*(?:$|[;&|)\n])/, reason: 'Environment dump may expose secrets' },
+  // invent patch: PowerShell env drive and .NET equivalents of env-dump: the
+  // whole drive, or one variable with a secret word (`Env:PATH` stays allowed).
+  // The cmdlet starts a command or a script block, or follows a quote after
+  // `powershell`/`pwsh` (-Command string); it is followed by whitespace and
+  // the match stays on one line. So CI/k8s YAML heredocs, `grep "gci env:"`,
+  // commit messages and `{ type: 'env:X' }` aren't dumps.
+  { level: 'high', id: 'ps-env-dump',            regex: /(?:^|[;&|({\n=`]\s*|\b(?:powershell|pwsh)(?:\.exe)?\b[^;&|\n]*?\s["'`]\s*)(Get-ChildItem|gci|ls|dir|Get-Item|gi|Get-Content|gc|cat|type)(?=\s)[^;|&\n]*?[\s:'"]env:(?:[\\/]?\*?["']?(?=\s|$|[;&|)}])|[\\/]?[\w*]*(?:SECRET|KEY|TOKEN|PASSWORD|PASSW|CREDENTIAL|AUTH|PRIVATE)[\w*]*)|\[(System\.)?Environment\]::GetEnvironmentVariables\(/i, reason: 'Environment dump may expose secrets' },
   { level: 'high', id: 'echo-secret-var',        regex: /\becho\b[^;|&]*\$\{?[A-Za-z_]*(?:SECRET|KEY|TOKEN|PASSWORD|PASSW|CREDENTIAL|API_KEY|AUTH|PRIVATE)[A-Za-z_]*\}?/i, reason: 'Echoing secret variable' },
   { level: 'high', id: 'printf-secret-var',      regex: /\bprintf\b[^;|&]*\$\{?[A-Za-z_]*(?:SECRET|KEY|TOKEN|PASSWORD|CREDENTIAL|API_KEY|AUTH|PRIVATE)[A-Za-z_]*\}?/i, reason: 'Printing secret variable' },
-  { level: 'high', id: 'cat-secrets-file',       regex: /\b(cat|less|head|tail|more)\s+[^|;]*(credentials?|secrets?)\.(json|ya?ml|toml)/i, reason: 'Reading secrets file' },
-  { level: 'high', id: 'cat-netrc',              regex: /\b(cat|less|head|tail|more)\s+[^|;]*\.netrc/i,                    reason: 'Reading .netrc credentials' },
-  { level: 'high', id: 'source-env',             regex: /\bsource\s+[^|;]*\.env\b|(?:^|[;&|]\s*)\.\s+[^|;]*\.env\b|^\.\s+[^|;]*\.env\b/i, reason: 'Sourcing .env loads secrets' },
+  { level: 'high', id: 'cat-secrets-file',       regex: cmdRule(String.raw`(cat|less|head|tail|more)\s+[^|;]*(credentials?|secrets?)\.(json|ya?ml|toml)`), reason: 'Reading secrets file' },
+  { level: 'high', id: 'cat-netrc',              regex: cmdRule(String.raw`(cat|less|head|tail|more)\s+[^|;]*\.netrc`),                    reason: 'Reading .netrc credentials' },
+  { level: 'high', id: 'source-env',             regex: cmdRule(String.raw`(source|\.)\s+[^|;]*\.env\b`), reason: 'Sourcing .env loads secrets' },
   { level: 'high', id: 'export-cat-env',         regex: /export\s+.*\$\(cat\s+[^)]*\.env/i,                                reason: 'Exporting secrets from .env' },
 
   // HIGH - Exfiltration
   { level: 'high', id: 'curl-upload-env',        regex: /\bcurl\b[^;|&]*(-d\s*@|-F\s*[^=]+=@|--data[^=]*=@|--data[-a-z]*\s+@|(?<![\w-])-T(?![A-Za-z0-9-])\s*|--upload-file[=\s]+)[^;|&]*(\.env|credentials|secrets|id_rsa|\.pem|\.key)/i, reason: 'Uploading secrets via curl' },
-  { level: 'high', id: 'curl-post-secrets',      regex: /\bcurl\b[^;|&]*-X\s*POST[^;|&]*[^;|&]*(\.env|credentials|secrets)/i, reason: 'POSTing secrets via curl' },
+  { level: 'high', id: 'curl-post-secrets',      regex: /\bcurl\b[^;|&]*-X\s*POST[^;|&]*(\.env|credentials|secrets)/i, reason: 'POSTing secrets via curl' },
   { level: 'high', id: 'wget-post-secrets',      regex: /\bwget\b[^;|&]*--post-file[^;|&]*(\.env|credentials|secrets)/i,  reason: 'POSTing secrets via wget' },
   { level: 'high', id: 'scp-secrets',            regex: /\bscp\b[^;|&]*(\.env|credentials|secrets|id_rsa|\.pem|\.key)[^;|&]+:/i, reason: 'Copying secrets via scp' },
   { level: 'high', id: 'rsync-secrets',          regex: /\brsync\b[^;|&]*(\.env|credentials|secrets|id_rsa)[^;|&]+:/i,    reason: 'Syncing secrets via rsync' },
   { level: 'high', id: 'nc-secrets',             regex: /\bnc\b[^;|&]*<[^;|&]*(\.env|credentials|secrets|id_rsa)/i,       reason: 'Exfiltrating secrets via netcat' },
 
   // HIGH - Delegation sinks (secret material into an external model)
-  { level: 'high', id: 'model-cli-secret-file',   regex: new RegExp(SINK_CMD + SEG_QA + '[\\s<@=(]\\s*' + SECRET_NAME + '|' + SINK_CMD + '[^;|&\\n]*(?:\\$\\(|`)[^`\\n]*?[\\s"\'=<@(]\\s*' + SECRET_NAME + '|' + CONTENT_CMD + '[^;|&\\n]*' + SECRET_FILE + '[^;&\\n]*' + SINK_CMD, 'i'), reason: 'Feeding a secrets file to an external model CLI' },
+  { level: 'high', id: 'model-cli-secret-file',   regex: new RegExp(SINK_CMD + SEG_QA + '[\\s<@=(]\\s*' + SECRET_NAME + '|' + SINK_CMD + '[^;|&\\n]*(?:\\$\\(|`)[^`\\n]*?[\\s"\'=<@(]\\s*' + SECRET_NAME + '|' + FIRST_CONTENT_CMD + '[^;|&\\n]*' + SECRET_FILE + '[^;&\\n]*' + SINK_CMD, 'i'), reason: 'Feeding a secrets file to an external model CLI' },
   { level: 'high', id: 'model-cli-secret-var',    regex: new RegExp(SINK_CMD + '[^;|&\\n]*' + SECRET_VAR, 'i'), reason: 'Passing a secret variable to an external model CLI' },
   { level: 'high', id: 'model-api-secret-body',   regex: new RegExp(HTTP_CMD + '(?=[^;|&\\n]*' + SINK_HOST + ')' + SEG_QA + '(?:' + API_BODY + SECRET_NAME + '|' + BODY_FLAG + '\\s*=?\\s*' + BODY_TOKEN + SECRET_VAR + ')|' + HTTPIE_CMD + '(?=[^;|&\\n]*' + SINK_HOST + ')' + SEG_QA + '(?:' + HTTPIE_FILE_ITEM + SECRET_NAME + '|' + HTTPIE_FIELD + BODY_TOKEN + SECRET_VAR + ')', 'i'), reason: 'Sending secrets to a model API endpoint' },
 
   // HIGH - Copy/move/delete secrets
-  { level: 'high', id: 'cp-env',                 regex: /\bcp\b[^;|&]*\.env\b/i,                                           reason: 'Copying .env file' },
-  { level: 'high', id: 'cp-ssh-key',             regex: /\bcp\b[^;|&]*(id_rsa|id_ed25519|\.pem|\.key)\b/i,                 reason: 'Copying private key' },
-  { level: 'high', id: 'mv-env',                 regex: /\bmv\b[^;|&]*\.env\b/i,                                           reason: 'Moving .env file' },
-  { level: 'high', id: 'rm-ssh-key',             regex: /\brm\b[^;|&]*(id_rsa|id_ed25519|id_ecdsa|authorized_keys)/i,     reason: 'Deleting SSH key' },
-  { level: 'high', id: 'rm-env',                 regex: /\brm\b.*\.env\b/i,                                                 reason: 'Deleting .env file' },
-  { level: 'high', id: 'rm-aws-creds',           regex: /\brm\b[^;|&]*\.aws\/credentials/i,                                reason: 'Deleting AWS credentials' },
-  { level: 'high', id: 'truncate-secrets',       regex: /\btruncate\b.*\.(env|pem|key)\b|(?:^|[;&|]\s*)>\s*\.env\b/i,      reason: 'Truncating secrets file' },
+  { level: 'high', id: 'cp-env',                 regex: cmdRule(String.raw`cp\b[^;|&]*\.env\b`),                                           reason: 'Copying .env file' },
+  { level: 'high', id: 'cp-ssh-key',             regex: cmdRule(String.raw`cp\b[^;|&]*(id_rsa|id_ed25519|\.pem|\.key)\b`),                 reason: 'Copying private key' },
+  { level: 'high', id: 'mv-env',                 regex: cmdRule(String.raw`mv\b[^;|&]*\.env\b`),                                           reason: 'Moving .env file' },
+  { level: 'high', id: 'rm-ssh-key',             regex: cmdRule(String.raw`rm\b[^;|&]*(id_rsa|id_ed25519|id_ecdsa|authorized_keys)`),     reason: 'Deleting SSH key' },
+  { level: 'high', id: 'rm-env',                 regex: cmdRule(String.raw`rm\b[^;|&\n]*\.env\b`),                                                 reason: 'Deleting .env file' },
+  { level: 'high', id: 'rm-aws-creds',           regex: cmdRule(String.raw`rm\b[^;|&]*\.aws[\\/]credentials`),                                reason: 'Deleting AWS credentials' },
+  { level: 'high', id: 'truncate-secrets',       regex: cmdRule(String.raw`truncate\b[^;|&\n]*\.(env|pem|key)\b|>\s*\.env\b`),      reason: 'Truncating secrets file' },
 
   // HIGH - Process environ
   { level: 'high', id: 'proc-environ',           regex: /\/proc\/[^/]*\/environ/,                                          reason: 'Reading process environment' },
@@ -249,8 +272,9 @@ function isAllowlisted(filePath) {
 }
 
 function checkFilePath(filePath, safetyLevel = SAFETY_LEVEL) {
-  // invent patch: Windows paths (C:\proj\.env) must match the '/'-based patterns
-  if (filePath) filePath = filePath.replace(/\\/g, '/');
+  // invent patch: Windows paths (C:\proj\.env) must match the '/'-based patterns;
+  // lowercase because macOS and Windows file systems ignore case (.ENV is .env)
+  if (filePath) filePath = filePath.replace(/\\/g, '/').toLowerCase();
   if (!filePath || isAllowlisted(filePath)) return { blocked: false, pattern: null };
   const threshold = LEVELS[safetyLevel] || 2;
   for (const p of SENSITIVE_FILES) {
@@ -261,12 +285,36 @@ function checkFilePath(filePath, safetyLevel = SAFETY_LEVEL) {
   return { blocked: false, pattern: null };
 }
 
+// invent patch: a heredoc body is data (a file, a commit message, a script for
+// python), not commands, unless the heredoc feeds a shell (`bash <<EOF`,
+// `cat <<EOF | sh`). An unquoted delimiter still runs `$(…)` and backticks in
+// the body, so those stay.
+const SHELL_WORD = /\b(?:ba|z|da|k)?sh\b|\b(?:pwsh|powershell|source|eval)\b/i;
+function dropHeredocBodies(cmd) {
+  return cmd.replace(/^(.*?<<-?[ \t]*)(['"]?)([A-Za-z_]\w*)\2(.*)\n([\s\S]*?)\n[ \t]*\3[ \t]*(?=\n|$)/gm,
+    (all, head, quote, tag, rest, body) => {
+      if (SHELL_WORD.test(head.replace(/<<-?[ \t]*$/, '') + rest)) return all;
+      const subst = quote ? [] : body.match(/\$\([^)\n]*\)|`[^`\n]*`/g) || [];
+      return [head + tag + rest, ...subst, tag].join('\n');
+    });
+}
+
+// Joins `\⏎` continuations. A `\` ending a comment, or before CRLF, is none:
+// the next line is a command of its own.
+function joinContinuations(cmd) {
+  return cmd.split('\n').reduce((out, line, i, lines) => {
+    const cont = /(?<!\\)\\$/.test(line) && !/(^|\s)#/.test(line);
+    return out + (cont ? line.slice(0, -1) + ' ' : line + (i < lines.length - 1 ? '\n' : ''));
+  }, '');
+}
+
 function checkBashCommand(cmd, safetyLevel = SAFETY_LEVEL) {
   if (!cmd) return { blocked: false, pattern: null };
-  cmd = cmd.replace(/\\\r?\n\s*/g, ' ');
+  cmd = joinContinuations(dropHeredocBodies(cmd));
   // invent patch: drop only the allowlisted tokens; upstream allowed the whole
-  // command when it merely ended in one (`cat .env; ls .env.example`)
-  cmd = cmd.split(/(\s+)/).filter(t => !isAllowlisted(t.replace(/^["']|["';]+$/g, ''))).join('');
+  // command when it merely ended in one (`cat .env; ls .env.example`). Split on
+  // shell operators too, so `cat .env;.env.example` keeps its `.env`.
+  cmd = cmd.split(/([\s;|&<>]+)/).filter(t => !isAllowlisted(t.replace(/^["']|["']+$/g, ''))).join('');
   const threshold = LEVELS[safetyLevel] || 2;
   for (const p of BASH_PATTERNS) {
     if (LEVELS[p.level] <= threshold && p.regex.test(cmd)) {
@@ -276,12 +324,22 @@ function checkBashCommand(cmd, safetyLevel = SAFETY_LEVEL) {
   return { blocked: false, pattern: null };
 }
 
+// invent patch: expand Grep globs so a pattern can't hide a secret file name:
+// `{.env,.env.local}` → each alternative, `.env*` → `.env`, `*.env` → `.env`
+function globCandidates(glob) {
+  const brace = glob.match(/\{([^{}]*)\}/);
+  const alts = brace ? brace[1].split(',').map(a => glob.replace(brace[0], a)) : [glob];
+  return alts.flatMap(a => [a, a.replace(/[*?]+$/, ''), a.replace(/[*?]+/g, '')]);
+}
+
 function check(toolName, toolInput, safetyLevel = SAFETY_LEVEL) {
   if (toolName === 'Grep') {
-    const candidates = [toolInput.path, toolInput.glob, toolInput.include].filter(Boolean);
-    const target = candidates.find(c => SENSITIVE_FILES.some(s => s.regex.test(c))) || candidates[0] || '';
-    toolInput = { file_path: target };
-    toolName = 'Read';
+    const candidates = [toolInput.path, toolInput.glob, toolInput.include].filter(Boolean).flatMap(globCandidates);
+    for (const c of candidates) {
+      const result = checkFilePath(c, safetyLevel);
+      if (result.blocked) return result;
+    }
+    return { blocked: false, pattern: null };
   }
   if (['Read', 'Edit', 'Write'].includes(toolName)) {
     return checkFilePath(toolInput?.file_path, safetyLevel);

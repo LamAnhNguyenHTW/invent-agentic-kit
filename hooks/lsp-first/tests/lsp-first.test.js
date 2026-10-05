@@ -58,8 +58,39 @@ describe('hook process', () => {
   const hook = path.join(__dirname, '..', 'lsp-first.js');
   const run = (input, extra = {}) => spawnSync('node', [hook], { input: JSON.stringify(input), encoding: 'utf8', env: { ...process.env, ...extra } }).stdout.trim();
   it('allows when LSP is not set up (no plugin, empty temp project)', () =>
-    assert.strictEqual(run({ tool_name: 'Grep', tool_input: { pattern: 'getUser' }, session_id: 't', cwd: require('os').tmpdir() }), '{}'));
-  it('is off with INVENT_LSP_FIRST=off', () =>
-    assert.strictEqual(run({ tool_name: 'Grep', tool_input: { pattern: 'getUser' }, session_id: 't' }, { INVENT_LSP_FIRST: 'off' }), '{}'));
+    assert.strictEqual(run({ tool_name: 'Grep', tool_input: { pattern: 'getUser' }, session_id: 't', cwd: require('os').tmpdir() }, { INVENT_LSP_FIRST: 'on' }), '{}'));
   it('survives bad input', () => assert.strictEqual(spawnSync('node', [hook], { input: 'not json', encoding: 'utf8' }).stdout.trim(), '{}'));
+});
+
+describe('/lsp on|off|status', () => {
+  const fs = require('node:fs');
+  const os = require('node:os');
+  const { switchedOn } = require('../lsp-first.js');
+  const hook = path.join(__dirname, '..', 'lsp-first.js');
+  const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'lsp-toggle-'));
+  const env = { ...process.env };
+  delete env.INVENT_LSP_FIRST;
+  const lsp = (arg) => spawnSync('node', [hook, arg], { cwd: repo, encoding: 'utf8', env });
+  const local = path.join(repo, '.claude', 'settings.local.json');
+
+  it('is off by default', () => assert.match(lsp('status').stdout, /lsp-first is OFF/));
+  it('on writes settings.local.json and keeps other keys', () => {
+    fs.mkdirSync(path.dirname(local), { recursive: true });
+    fs.writeFileSync(local, JSON.stringify({ permissions: { allow: ['Bash(ls)'] }, env: { A: '1' } }));
+    assert.match(lsp('on').stdout, /lsp-first is ON/);
+    const s = JSON.parse(fs.readFileSync(local, 'utf8'));
+    assert.deepStrictEqual(s, { permissions: { allow: ['Bash(ls)'] }, env: { A: '1', INVENT_LSP_FIRST: 'on' } });
+    assert.strictEqual(switchedOn(repo), true);
+  });
+  it('status names what is missing per language', () => assert.match(lsp('status').stdout, /TS\/JS : no LSP \(.*not on PATH/));
+  it('off switches it off', () => {
+    assert.match(lsp('off').stdout, /lsp-first is OFF/);
+    assert.strictEqual(switchedOn(repo), false);
+  });
+  it('refuses to overwrite invalid JSON', () => {
+    fs.writeFileSync(local, '{ broken');
+    const r = lsp('on');
+    assert.strictEqual(r.status, 1);
+    assert.strictEqual(fs.readFileSync(local, 'utf8'), '{ broken');
+  });
 });

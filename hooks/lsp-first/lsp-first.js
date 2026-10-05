@@ -10,7 +10,13 @@
  * Silent unless LSP is really there for the searched language: the server
  * binary on PATH and its official plugin enabled. Text searches (strings,
  * regexes, TODOs), searches in non-code files and grep filters on a pipe
- * (`ps aux | grep node`) pass. INVENT_LSP_FIRST=off turns it off.
+ * (`ps aux | grep node`) pass.
+ *
+ * Off by default (an experiment): `/lsp on` sets INVENT_LSP_FIRST=on in the
+ * repo's .claude/settings.local.json. The hook reads the settings files on
+ * every call, so the switch applies to the next search.
+ *
+ *   node lsp-first.js on|off|status   switch it for the current repo
  */
 
 const fs = require('fs');
@@ -72,16 +78,44 @@ function onPath(bin) {
     exts.some((e) => { try { return fs.statSync(path.join(dir, bin + e)).isFile(); } catch { return false; } }));
 }
 
-function pluginEnabled(plugin, cwd) {
-  const files = [path.join(os.homedir(), '.claude', 'settings.json'),
-    path.join(cwd, '.claude', 'settings.json'), path.join(cwd, '.claude', 'settings.local.json')];
-  return files.some((f) => { try { return JSON.parse(fs.readFileSync(f, 'utf8')).enabledPlugins?.[plugin] === true; } catch { return false; } });
+const localSettings = (cwd) => path.join(cwd, '.claude', 'settings.local.json');
+// Settings files, closest scope first: local, project, user
+function settings(cwd) {
+  return [localSettings(cwd), path.join(cwd, '.claude', 'settings.json'), path.join(os.homedir(), '.claude', 'settings.json')]
+    .map((f) => { try { return JSON.parse(fs.readFileSync(f, 'utf8')); } catch { return {}; } });
+}
+
+const pluginEnabled = (plugin, cwd) => settings(cwd).some((s) => s.enabledPlugins?.[plugin] === true);
+
+// On only when switched on: the closest settings file that sets it wins, then the environment
+function switchedOn(cwd) {
+  const set = settings(cwd).map((s) => s.env?.INVENT_LSP_FIRST).find((v) => v !== undefined);
+  return (set ?? process.env.INVENT_LSP_FIRST) === 'on';
 }
 
 // Languages with a working LSP in this project
 function availableLangs(cwd) {
   return Object.keys(LANGS).filter((l) => LANGS[l].markers.some((f) => fs.existsSync(path.join(cwd, f)))
     && onPath(LANGS[l].bin) && pluginEnabled(LANGS[l].plugin, cwd));
+}
+
+// `/lsp on|off|status`: writes INVENT_LSP_FIRST to the repo's settings.local.json
+function toggle(arg, cwd) {
+  const file = localSettings(cwd);
+  if (arg === 'on' || arg === 'off') {
+    let s = {};
+    if (fs.existsSync(file)) s = JSON.parse(fs.readFileSync(file, 'utf8')); // invalid JSON: throw, don't overwrite
+    s.env = { ...s.env, INVENT_LSP_FIRST: arg };
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, JSON.stringify(s, null, 2) + '\n');
+  }
+  const lines = [`lsp-first is ${switchedOn(cwd) ? 'ON' : 'OFF'} in ${cwd}` + (arg === 'on' || arg === 'off' ? ` (written to ${file})` : '')];
+  for (const [l, { bin, plugin, markers }] of Object.entries(LANGS)) {
+    const missing = [!markers.some((f) => fs.existsSync(path.join(cwd, f))) && `no ${markers.join('/')}`,
+      !onPath(bin) && `${bin} not on PATH`, !pluginEnabled(plugin, cwd) && `${plugin} not enabled`].filter(Boolean);
+    lines.push(`  ${l === 'ts' ? 'TS/JS ' : 'Python'}: ${missing.length ? 'no LSP (' + missing.join(', ') + ')' : 'LSP ready'}`);
+  }
+  return lines.join('\n');
 }
 
 // 'deny' the first time a symbol search hits an LSP-covered language, else 'allow'
@@ -116,9 +150,9 @@ async function main() {
   let input = '';
   for await (const chunk of process.stdin) input += chunk;
   try {
-    if (process.env.INVENT_LSP_FIRST === 'off') return console.log('{}');
     const { tool_name, tool_input = {}, session_id, cwd = process.cwd() } = JSON.parse(input);
     if (tool_name === 'Bash' && !/\b(grep|rg)\b/.test(tool_input.command || '')) return console.log('{}');
+    if (!switchedOn(cwd)) return console.log('{}');
     const r = decide(tool_name, { ...tool_input, command: tool_input.command?.replace(/\n/g, ' ') },
       { available: availableLangs(cwd), seen: seenStore(session_id) });
     if (r.decision !== 'deny') return console.log('{}');
@@ -129,7 +163,15 @@ async function main() {
 }
 
 if (require.main === module) {
-  main();
+  const arg = process.argv[2];
+  if (['on', 'off', 'status'].includes(arg)) {
+    try {
+      console.log(toggle(arg, process.cwd()));
+    } catch (e) {
+      console.error(`Could not update ${localSettings(process.cwd())}: ${e.message}`);
+      process.exit(1);
+    }
+  } else main();
 } else {
-  module.exports = { symbolOf, searchOf, decide };
+  module.exports = { symbolOf, searchOf, decide, toggle, switchedOn };
 }

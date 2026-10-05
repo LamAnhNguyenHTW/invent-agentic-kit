@@ -34,7 +34,7 @@ Source: the table in [S1]; file locations in [S2].
 - **P-02** Each `CLAUDE.md` stays under 200 lines. Longer files cost context and are followed less reliably. [S1] [S2]
 - **P-03** Instructions are concrete enough to verify: "Use 2-space indentation", not "Format code properly". [S2]
 - **P-04** No two instructions contradict each other, across `CLAUDE.md`, nested `CLAUDE.md` files and `.claude/rules/`. [S2]
-- **P-05** A repo with `AGENTS.md` has a `CLAUDE.md` that imports it with `@AGENTS.md` instead of repeating it. Claude Code reads `CLAUDE.md`, not `AGENTS.md`. [S2]
+- **P-05** A repo with `AGENTS.md` and a `CLAUDE.md` has the `CLAUDE.md` import it with `@AGENTS.md` instead of repeating it. Claude Code reads `AGENTS.md` on its own only while no `CLAUDE.md` or `CLAUDE.local.md` exists. [S2]
 - **P-06** `@path` imports organise a file but save no context: imported files load at launch too. [S2]
 
 ### What moves out

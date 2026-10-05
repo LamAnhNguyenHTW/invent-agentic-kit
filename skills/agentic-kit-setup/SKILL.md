@@ -1,11 +1,34 @@
 ---
 name: agentic-kit-setup
-description: Walk the user through onboarding their personal and project CLAUDE.md files with Invent's agentic-coding guidelines and workflow, the repo type (demo or prod), the project's secret-file deny rules, its pre-commit quality gate, and an optional personal statusline and notification. Use when the user runs /agentic-kit-setup or asks to set up Invent's Claude Code conventions.
+description: Walk the user through onboarding their personal and project CLAUDE.md files with Invent's agentic-coding guidelines and workflow, the repo type (demo or prod), the project's secret-file deny rules, its pre-commit quality gate, and an optional personal statusline and notification. Backs the repo's Claude Code files up first and ends by running repo-setup, which moves instructions into rules, skills, hooks or permissions. Use when the user runs /agentic-kit-setup or asks to set up Invent's Claude Code conventions.
+# Any path to backup.js: the plugin path may contain a space and get quoted, and on Windows Claude may run it via PowerShell.
+allowed-tools: Bash(node *repo-setup/scripts/backup.js*) PowerShell(node *repo-setup/scripts/backup.js*)
 ---
 
 Walk the user through this step by step, one question at a time via AskUserQuestion.
 Never silently rewrite a file — always show the exact block you intend to
-insert and ask the user for explicit confirmation before writing it.
+insert and ask the user for explicit confirmation before writing it. The one
+exception is Step 7, which the backups cover.
+
+## Step 0 — Back up
+
+Find, with Glob, the files this setup may change:
+
+- `CLAUDE.md`, `.claude/CLAUDE.md`, `CLAUDE.local.md`, `AGENTS.md`
+- `CLAUDE.md` files in subdirectories
+- `.claude/rules/**/*.md`, `.claude/skills/*/SKILL.md`, `.claude/commands/**/*.md`, `.claude/agents/*.md`
+- `.claude/settings.json`, `.pre-commit-config.yaml`
+
+Skip `node_modules`, `.git`, `.claude/worktrees` and `.repo-setup-backup`.
+Never back up `.claude/settings.local.json`, `.mcp.json` or `.env` files.
+
+- If none exist: say there is nothing to back up and go to Step 1.
+- Otherwise back them up without asking:
+
+      node "${CLAUDE_PLUGIN_ROOT}/skills/repo-setup/scripts/backup.js" save .repo-setup-backup <file> <file> ...
+
+  Show the script's output and remember the restore command it prints for
+  Step 8. If the script fails, stop.
 
 ## Step 1 — Personal CLAUDE.md (~/.claude/CLAUDE.md)
 
@@ -454,9 +477,25 @@ Then:
    under Settings → System → Notifications; on macOS, for "Script Editor".
    Linux needs `notify-send` (package `libnotify-bin`).
 
-## Step 7 — Done
+## Step 7 — Restructure (repo-setup)
 
-Confirm all files are in the desired state and summarize what changed.
+`repo-setup` checks the repo's `CLAUDE.md` and `.claude/` against Anthropic's
+guidance and moves instructions into rules, skills, hooks or permissions. It
+leaves the Invent block alone.
+
+1. Tell the user that it now runs without questions: it lists its findings,
+   takes a second backup next to the one from Step 0, and applies all of
+   them. The skill itself asks nothing; Claude Code may still ask to allow
+   each file change, depending on the permission mode.
+2. Invoke the `repo-setup` skill with the Skill tool and the arguments
+   `--no-questions`.
+
+## Step 8 — Done
+
+Confirm all files are in the desired state and summarize what changed. Give
+both restore commands: the one from Step 7 undoes only the restructuring,
+the one from Step 0 brings the repo back to how it was before this setup.
+The backup folder can be deleted once the user is happy.
 
 Then point to Claude Code's built-in checks for tidying up the instruction
 files later. Both only propose changes and edit nothing without the user's OK:

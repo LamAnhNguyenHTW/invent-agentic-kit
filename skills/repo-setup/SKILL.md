@@ -4,7 +4,8 @@ description: Sets up a repo for Claude Code. Runs /init when the repo has no CLA
 argument-hint: "[--no-questions]"
 # CLAUDE_SKILL_DIR, not CLAUDE_PLUGIN_ROOT: the skill also runs as a plain symlinked skill, outside the plugin.
 # Edit and Write are left out on purpose: Claude Code asks before each change.
-allowed-tools: Bash(node ${CLAUDE_SKILL_DIR}/scripts/backup.js *) Read Glob Grep Skill(init)
+# Any path to backup.js: the skill path may contain a space and get quoted, and on Windows Claude may run it via PowerShell.
+allowed-tools: Bash(node *repo-setup/scripts/backup.js*) PowerShell(node *repo-setup/scripts/backup.js*) Read Glob Grep Skill(init)
 ---
 
 Set up the repo in the current directory, step by step. Ask one question at
@@ -73,6 +74,7 @@ finding wherever the baseline says the content belongs somewhere else:
 | "Never do X" that must hold | `permissions.deny` in `.claude/settings.json` | P-15 |
 | A personal preference | `CLAUDE.local.md`, listed in `.gitignore` | P-16 |
 | `AGENTS.md` repeated in `CLAUDE.md` | `@AGENTS.md` import | P-05 |
+| `AGENTS.md` next to a `CLAUDE.md` without `@AGENTS.md` (Claude doesn't read it) | `@AGENTS.md` import | P-05 |
 | A rule, skill or subagent file in the wrong shape | fix the file | P-20 to P-23 |
 | A file in `.claude/commands/` | a skill with the same name | P-13 |
 
@@ -106,7 +108,7 @@ all findings are picked.
    default; the user can name any other folder.
 2. Back up every existing file the picked findings will change:
 
-       node ${CLAUDE_SKILL_DIR}/scripts/backup.js save <folder> <file> <file> ...
+       node "${CLAUDE_SKILL_DIR}/scripts/backup.js" save <folder> <file> <file> ...
 
    The script creates a timestamped subfolder, stores each copy with a
    `.bak` suffix so Claude Code doesn't load it as an instruction file, and

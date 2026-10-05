@@ -299,22 +299,15 @@
         <div class="o">.pre-commit-<wbr>config.yaml</div>
       </div>
       <div class="arrow" aria-hidden="true">→</div>
-      <div class="flow-box">
-        <div class="n">6</div>
-        <div class="t">Code intelligence</div>
-        <div class="d">Language servers for TS/JS and Python: type errors after each edit, LSP navigation</div>
-        <div class="o">typescript-lsp · pyright-lsp</div>
-      </div>
-      <div class="arrow" aria-hidden="true">→</div>
       <div class="flow-box done">
-        <div class="n">7</div>
+        <div class="n">6</div>
         <div class="t">Statusline</div>
         <div class="d">Optional, personal: statusline and a desktop notification when Claude finishes</div>
         <div class="o">~/.claude/<wbr>settings.json</div>
       </div>
       <div class="arrow" aria-hidden="true">→</div>
       <div class="flow-box">
-        <div class="n">8</div>
+        <div class="n">7</div>
         <div class="t">Done</div>
         <div class="d">Summary of the changes, plus /doctor and /doctor prompt-audit for tidying instruction files later</div>
         <div class="o">summary</div>
@@ -387,7 +380,6 @@
         <div class="sub-note">Patched for Windows paths and the PowerShell tool; .env slipped through on Windows before.</div>
         <div class="row"><span><b>block-dangerous-commands</b> stops destructive commands like <code>rm -rf ~</code> or <code>git reset --hard</code> <span class="when">· PreToolUse</span></span><span class="status live">live</span></div>
         <div class="row"><span><b>git-safety</b> prod: blocks commits, rebases, resets and pushes on main/master, so work on a feature branch. Demo: relaxed, only deleting or force-pushing main and gh repo/release deletion stay blocked <span class="when">· PreToolUse</span></span><span class="status live">live</span></div>
-        <div class="row"><span><b>lsp-first</b> off by default, <code>/lsp on</code> per repo: turns down a text search for a symbol once and points Claude to the LSP tool; the same search again goes through. Only where a language server runs <span class="when">· PreToolUse</span></span><span class="status next">experiment</span></div>
         <div class="row"><span><b>ponytail-activate</b> loads the ponytail rules into every session <span class="when">· SessionStart</span></span><span class="status live">live</span></div>
         <div class="row"><span><b>Statusline &amp; notification</b> optional, per person: context, cost, today's spend and git branch under the prompt, plus a desktop notification when Claude finishes <span class="when">· setup step 6</span></span><span class="status opt">optional</span></div>
         <div class="row"><span><b>radon · xenon · ruff · ty</b> complexity, lint, format and types on every commit. Blocking in prod repos, advisory in demo repos <span class="when">· pre-commit</span></span><span class="status live">live</span></div>
@@ -417,9 +409,9 @@
         <span class="tag planned">planned · v0.5</span>
       </div>
       <div class="card planned">
-        <h3>Fewer false positives in protect-secrets</h3>
-        <p>A heredoc or commit message that mentions a secret file (<code>type</code> and <code>.env</code> in one text, <code>grep</code> for ".env") is blocked like a real read. Narrow the rules to the command, not the text it carries.</p>
-        <span class="tag planned">planned</span>
+        <h3>LSP code intelligence</h3>
+        <p>Tested and parked. Pushing Claude from grep to LSP cost about twice the turns on a small TS repo, for the same answer. TypeScript 7 ships no tsserver, so the official TS server doesn't start there. Not tested yet: LSP's type errors after each edit, and navigation in a large repo.</p>
+        <span class="tag planned">later</span>
       </div>
       <div class="card planned">
         <h3>Pre-commit for other languages</h3>

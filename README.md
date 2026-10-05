@@ -11,7 +11,8 @@ that checks the result against the ticket.
 
 ### 1. Guided setup — `/agentic-kit-setup`
 
-Run it once per project. It first copies the repo's Claude Code files
+Run it once per project. It first checks that Node.js is installed (the
+hooks need it) and copies the repo's Claude Code files
 (`CLAUDE.md`, `.claude/`, `.pre-commit-config.yaml`) to
 `./.repo-setup-backup`. Then it asks before every change and never rewrites
 a file silently, except in step 7:
@@ -89,7 +90,7 @@ installed. They run while Claude works, on Claude's own tool calls:
 |---|---|---|
 | `protect-secrets` | before Read/Edit/Write/Grep/Bash/PowerShell | Blocks reading, editing or leaking `.env` files, keys and credentials |
 | `block-dangerous-commands` | before Bash/PowerShell | Blocks destructive commands (`rm -rf ~`, `Remove-Item -Recurse ~`, force-push to main, `git reset --hard`, …) |
-| `git-safety` | before Bash/PowerShell | Prod: no commits, merges, resets or pushes on main/master; no `gh pr merge`, `gh repo delete`, … Demo: relaxed (see below) |
+| `git-safety` | before Bash/PowerShell | Prod: no commits, merges, rebases, resets or pushes on main/master; no `gh pr merge`, `gh repo delete`, … Demo: relaxed (see below) |
 | `ponytail-activate` | session start | Loads the `ponytail` ruleset into every session (off: `PONYTAIL_MODE=off`) |
 
 The three pre-tool-use hooks log to `~/.claude/hooks-logs/`. They are regex
@@ -131,7 +132,9 @@ so a saved change applies to the next tool call.
 | `PONYTAIL_MODE` | `off` | Stops loading ponytail at session start. The skill stays installed, so Claude may still invoke it on its own |
 
 `ponytail-activate` runs on startup, `/clear` and compaction, not on resume,
-where the transcript already has it.
+where the transcript already has it. It leaves out two parts of the upstream
+text that don't apply to Invent projects (a hardware aside and a pointer to
+another plugin); the skill file itself stays as upstream ships it.
 
 The three safety hooks come from
 [karanb192/claude-code-hooks](https://github.com/karanb192/claude-code-hooks).
@@ -145,14 +148,25 @@ Our changes are marked `invent patch:` in the scripts and covered by
   token, so `cat .env;.env.example` is still caught; expands Grep globs
   (`.env*`, `{.env,.env.local}`); treats `.ENV` as `.env`; lets a quoted
   regex like `grep -v '\.env'` pass; catches `gci env:` (PowerShell env dump).
+- `protect-secrets` doesn't block text that only mentions a secret file:
+  a reading command counts only where a command starts, so commit messages,
+  `echo` strings and PR bodies pass; heredoc bodies are data unless fed to a
+  shell; for grep/rg, `.env` blocks only as a file operand, not in the
+  search pattern (`grep -rn ".env" src/` passes, `grep KEY .env` doesn't).
 - `block-dangerous-commands` and `git-safety` also check the PowerShell tool;
   `block-dangerous-commands` knows `Remove-Item`/`Format-Volume` and
   PowerShell deletes of `.`, `*` and a drive root.
 - `block-dangerous-commands` and `git-safety` see through `git -C <dir>` /
   `git -c k=v` / `--no-pager`, so `git -C . reset --hard` is caught.
-- `block-dangerous-commands` reads `rm` operands as whole tokens: upstream's
-  rules backtracked for 40 s on long commands, past the hook timeout. It also
-  catches `rm -rf ~/*`, `rm -rf "$HOME"/` and `(rm -rf *)`.
+- `block-dangerous-commands` parses `rm` operands as whole tokens, quoted
+  spans included: upstream's rules backtracked for 40 s on long commands,
+  past the hook timeout. It also catches `rm -rf ~/*`, `"$HOME"/`,
+  `"${HOME:?}"/*`, `rm -rf 'a;b' /`, subshells (`(rm -rf *)`) and command
+  strings (`bash -c "rm -rf /"`, `python -c '…rm -rf ~…'`).
+- `block-dangerous-commands` and `git-safety` check each command in several
+  forms, and block if any matches: as written, with `\⏎` line continuations
+  joined (`r\⏎m -rf /`), with comments stripped, and with command words in
+  lower case (`RM -rf /`, `GIT reset --hard`; macOS and Windows run them).
 - `git-safety` only treats `main`/`master` as protected when it is the whole
   ref, so `git push origin feature/main-page` is allowed; reads the branch
   from the session's working directory (or the `git -C` one); has the

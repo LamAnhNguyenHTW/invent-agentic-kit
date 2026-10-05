@@ -158,10 +158,6 @@ describe('git-safety: branch comes from the hook input cwd', () => {
     assert.match(run({ tool_name: 'Bash', tool_input: { command: 'git commit -m x' }, cwd: repo }), /"permissionDecision":"deny"/));
   it('follows git -C to the repo on main', () =>
     assert.match(run({ tool_name: 'Bash', tool_input: { command: `git -C ${repo} commit -m x` }, cwd: elsewhere }), /"permissionDecision":"deny"/));
-  it('follows git -C <dir>\⏎ (continuation right after the dir) to the repo on main', () =>
-    assert.match(run({ tool_name: 'Bash', tool_input: { command: `git -C ${repo}\\\n  commit -m x` }, cwd: elsewhere }), /"permissionDecision":"deny"/));
-  it('follows GIT -C (any case, macOS) to the repo on main', () =>
-    assert.match(run({ tool_name: 'Bash', tool_input: { command: `GIT -C ${repo} commit -m x` }, cwd: elsewhere }), /"permissionDecision":"deny"/));
   it('allows the same commit in demo mode', () =>
     assert.strictEqual(run({ tool_name: 'Bash', tool_input: { command: 'git commit -m x' }, cwd: repo }, { INVENT_REPO_TYPE: 'demo' }).trim(), '{}'));
 });
@@ -239,12 +235,6 @@ describe('ponytail-activate', () => {
   it('prints the ruleset without frontmatter', () => {
     const r = runHook('ponytail-activate/ponytail-activate.js', {});
     assert.match(r.out, /^# Ponytail/);
-  });
-  it('leaves out the off-topic parts of the upstream text', () => {
-    const { out } = runHook('ponytail-activate/ponytail-activate.js', {});
-    assert.doesNotMatch(out, /PCA9685|Caveman/);
-    assert.match(out, /Lazy code without its check is unfinished/); // the paragraph after the cut stays
-    assert.match(out, /Ponytail governs what you build, not how you talk\. "stop ponytail"/);
   });
   it('prints nothing with PONYTAIL_MODE=off', () => {
     assert.strictEqual(runHook('ponytail-activate/ponytail-activate.js', {}, { PONYTAIL_MODE: 'off' }).out, '');

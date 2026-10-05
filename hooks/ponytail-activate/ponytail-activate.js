@@ -17,19 +17,10 @@ const path = require('path');
 
 if (process.env.PONYTAIL_MODE === 'off') process.exit(0);
 
-// Parts of the upstream text that don't apply to every Invent session: a
-// hardware aside and a pointer to another plugin. The skill file stays as
-// upstream ships it; if upstream rewords them, they simply stay in.
-const OFF_TOPIC = [
-  /\n\nHardware is never the ideal[\s\S]*?(?=\n\n)/,
-  / \(pair with Caveman for\s+terse prose\)/,
-];
-
 try {
   const skill = fs.readFileSync(path.join(__dirname, '..', '..', 'skills', 'ponytail', 'SKILL.md'), 'utf8');
   // SessionStart stdout is added to Claude's context; drop the frontmatter.
-  const text = OFF_TOPIC.reduce((t, re) => t.replace(re, ''), skill.replace(/^---[\s\S]*?\n---\s*/, ''));
-  console.log(text);
+  console.log(skill.replace(/^---[\s\S]*?\n---\s*/, ''));
 } catch {
   // Missing skill must not break session start.
 }

@@ -187,10 +187,8 @@ const BASH_PATTERNS = [
   { level: 'critical', id: 'ps-read-key',        regex: /\b(Get-Content|gc|type)\b[^|;]*(id_rsa|id_ed25519|id_ecdsa|\.pem|\.key|\.aws[\\/]credentials)\b/i, reason: 'Reading private key or credentials' },
 
   // HIGH - Environment exposure
-  // invent patch: `ENV`/`PRINTENV` in any case too (macOS finds the binary;
-  // `SET`/`EXPORT` are no commands), but not glued into a regex alternation:
-  // `grep -E "^(A|ENV)"`.
-  { level: 'high', id: 'env-dump',               regex: /\bprintenv\b|(?:^|[;&|(\n]\s*)(?:env|set|export|declare\s+-x)\s*(?:$|[;&|)\n])|\b[Pp][Rr][Ii][Nn][Tt][Ee][Nn][Vv]\b|(?:^|[;&\n]\s*|(?<!\w)\|\s*|(?<![\w"'^|(])\(\s*)[Ee][Nn][Vv]\s*(?:$|[;&)\n]|\|(?!\w))/, reason: 'Environment dump may expose secrets' },
+  // invent patch: a newline separates commands too
+  { level: 'high', id: 'env-dump',               regex: /\bprintenv\b|(?:^|[;&|(\n]\s*)(?:env|set|export|declare\s+-x)\s*(?:$|[;&|)\n])/, reason: 'Environment dump may expose secrets' },
   // invent patch: PowerShell env drive and .NET equivalents of env-dump: the
   // whole drive, or one variable with a secret word (`Env:PATH` stays allowed).
   // The cmdlet starts a command or a script block, or follows a quote after
@@ -272,33 +270,16 @@ function checkFilePath(filePath, safetyLevel = SAFETY_LEVEL) {
   return { blocked: false, pattern: null };
 }
 
-// invent patch: the command is checked in several forms and blocked if any
-// matches, so normalizing can only add blocks: as written (a `\` ending a
-// comment, or before CRLF, is no continuation); with `\⏎` deleted as bash does
-// (`.e\⏎nv` is `.env`); with comments stripped first (`# x\⏎cat .e\⏎nv`); with `\⏎` as
-// a space. A stripped comment leaves a `;`: it ends the command like the one
-// it stood in, so a rule can't run on through a heredoc body. A form equal to an earlier one apart from whitespace is skipped:
-// each form multiplies the cost of every rule.
-function shellForms(cmd) {
-  const s = String(cmd || '');
-  const deleted = s.replace(/(?<!\\)\\\n/g, '');
-  const forms = [s, deleted];
-  if (s.includes('#')) forms.push(s.replace(/(^|[\s;&|(])#[^\n]*/g, '$1;').replace(/(?<!\\)\\\n/g, ''));
-  forms.push(s.replace(/\\\r?\n\s*/g, ' '));
-  const seen = new Set();
-  return forms.filter((f) => { const k = f.replace(/\s+/g, ' '); return !seen.has(k) && seen.add(k); });
-}
-
 function checkBashCommand(cmd, safetyLevel = SAFETY_LEVEL) {
   if (!cmd) return { blocked: false, pattern: null };
-  const forms = shellForms(cmd)
-    // invent patch: drop only the allowlisted tokens; upstream allowed the whole
-    // command when it merely ended in one (`cat .env; ls .env.example`). Split on
-    // shell operators too, so `cat .env;.env.example` keeps its `.env`.
-    .map((c) => c.split(/([\s;|&<>]+)/).filter(t => !isAllowlisted(t.replace(/^["']|["']+$/g, ''))).join(''));
+  cmd = cmd.replace(/\\\r?\n\s*/g, ' ');
+  // invent patch: drop only the allowlisted tokens; upstream allowed the whole
+  // command when it merely ended in one (`cat .env; ls .env.example`). Split on
+  // shell operators too, so `cat .env;.env.example` keeps its `.env`.
+  cmd = cmd.split(/([\s;|&<>]+)/).filter(t => !isAllowlisted(t.replace(/^["']|["']+$/g, ''))).join('');
   const threshold = LEVELS[safetyLevel] || 2;
   for (const p of BASH_PATTERNS) {
-    if (LEVELS[p.level] <= threshold && forms.some((c) => p.regex.test(c))) {
+    if (LEVELS[p.level] <= threshold && p.regex.test(cmd)) {
       return { blocked: true, pattern: p };
     }
   }

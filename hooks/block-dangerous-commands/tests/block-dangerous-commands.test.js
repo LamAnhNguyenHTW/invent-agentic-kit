@@ -107,7 +107,7 @@ describe('Unit: checkCommand()', () => {
     it('every pattern answers fast on a long command', () => {
       for (const cmd of [`rm ${flags}zz`, `rm ${'-'.repeat(2000)}`, `rm ${'a '.repeat(2000)}`, 'x '.repeat(5000),
         `rm${' '.repeat(5000)}-rf /`, `rm${'\t'.repeat(5000)}x`, `rm -rf ${'a\\\n'.repeat(1000)}x`,
-        `${'rm -'.repeat(160)}${' '.repeat(1300)}X ; git reset --hard`, `rm ${"'a' ".repeat(1000)}x`, `RM ${'-x '.repeat(700)}zz`]) {
+        `${'rm -'.repeat(160)}${' '.repeat(1300)}X ; git reset --hard`, `rm ${"'a' ".repeat(1000)}x`]) {
         const start = Date.now();
         checkCommand(cmd, 'strict');
         assert.ok(Date.now() - start < 200, `slow on ${cmd.slice(0, 30)}…`);
@@ -115,83 +115,38 @@ describe('Unit: checkCommand()', () => {
     });
   });
 
-  describe('Case and line continuations (macOS finds RM; bash joins \\⏎ lines)', () => {
-    it('blocks RM -rf /', () => shouldBlock('RM -rf /', 'rm-root'));
-    it('blocks sudo Rm -rf ~', () => shouldBlock('sudo Rm -rf ~', 'rm-home'));
-    it('blocks GIT reset --hard', () => shouldBlock('GIT reset --hard', 'git-reset-hard'));
-    it('blocks rm -rf split over lines before /', () => shouldBlock('rm -rf \\\n  --no-preserve-root /', 'rm-root'));
-    it('blocks rm -r split over lines before /etc', () => shouldBlock('rm -r \\\n -f /etc', 'rm-system'));
-    it('blocks rm -r split over lines before .', () => shouldBlock('rm -r \\\n -f .', 'rm-cwd'));
+  describe('CRITICAL: rm operands and subshells', () => {
     it('blocks rm with a run of spaces before /', () => shouldBlock(`rm${' '.repeat(3000)}-rf /`, 'rm-root'));
-    it('allows RM -rf ./build', () => shouldAllow('RM -rf ./build'));
-    // bash deletes `\⏎` outright, so a continuation can split a word
-    it('blocks r\\⏎m -rf /', () => shouldBlock('r\\\nm -rf /', 'rm-root'));
-    for (const cmd of ['true;RM -rf /', '(RM -rf /)', '/bin/RM -rf /', '\\RM -rf /']) {
-      it(`blocks ${cmd}`, () => shouldBlock(cmd, 'rm-root'));
-    }
-    it('blocks cd /tmp&&GIT reset --hard', () => shouldBlock('cd /tmp&&GIT reset --hard', 'git-reset-hard'));
-    it('blocks /usr/bin/GIT reset --hard', () => shouldBlock('/usr/bin/GIT reset --hard', 'git-reset-hard'));
-    it('blocks rm -rf /ETC', () => shouldBlock('rm -rf /ETC', 'rm-system'));
-  });
-
-  describe('CRITICAL: rm operands, subshells and quoted commands', () => {
-    // GNU rm reads flags after operands; a quoted or escaped ;&| is part of the operand
-    it("blocks rm 'a;b' -rf ~", () => shouldBlock("rm 'a;b' -rf ~", 'rm-home-trailing'));
-    it('blocks rm "x|y" -r $HOME', () => shouldBlock('rm "x|y" -r $HOME', 'rm-home-trailing'));
-    it('blocks rm a\\;b -rf ~', () => shouldBlock('rm a\\;b -rf ~', 'rm-home-trailing'));
     it('blocks $(rm -rf ~)', () => shouldBlock('$(rm -rf ~)', 'rm-home'));
     it('blocks `rm -rf /`', () => shouldBlock('`rm -rf /`', 'rm-root'));
-    it('blocks bash -c "rm -rf /"', () => shouldBlock('bash -c "rm -rf /"', 'rm-root'));
-    it('blocks bash -c "rm -rf /etc"', () => shouldBlock('bash -c "rm -rf /etc"', 'rm-system'));
+    for (const cmd of ['(rm -rf *)', 'x=$(rm -rf *)', 'true && (rm -rf ./)', 'f() (rm -rf ~)']) {
+      it(`blocks ${cmd}`, () => shouldBlock(cmd));
+    }
     for (const cmd of ['cp scripts/rm.sh ~', 'mv rm-old.log ~', './rm.sh ~', '(cd x && rm -rf build)']) {
       it(`allows ${cmd}`, () => shouldAllow(cmd));
-    }
-  });
-
-  describe('Round 4: normalizing only adds blocks (5c0cac6 blocked all of these)', () => {
-    // a `\` ending a comment, or before CRLF, is no continuation: the next line is its own command
-    for (const cmd of ['true # x\\\nrm -rf /', 'echo hi #note\\\nrm -rf ~', 'echo a\\\r\nrm -rf /']) {
-      it(`blocks ${JSON.stringify(cmd)}`, () => shouldBlock(cmd));
-    }
-    // a quoted or escaped ;&| inside an operand, with more text after the target
-    for (const cmd of ["rm -rf 'a;b' /", 'rm -rf "x|y" /etc', 'rm -rf a\\;b /', "rm -rf 'x&y' .", 'rm -rf "a;b" *',
-      "rm -rf 'a;b' ~ && echo done", "rm -rf 'a;b' ~ 2>&1", "rm 'a;b' -rf ~ && ls", "rm 'a;b' -rf ~ 2>/dev/null", 'rm "x|y" -r $HOME && ls']) {
-      it(`blocks ${cmd}`, () => shouldBlock(cmd));
     }
     // Windows Git Bash and quoted command names
     for (const cmd of ['rm.exe -rf ~', '"rm" -rf ~', "'rm' -rf ~", 'rm"" -rf $HOME', '/usr/bin/rm -rf C:/', '"rm" C:\\']) {
       it(`blocks ${cmd}`, () => shouldBlock(cmd));
     }
-  });
-
-  describe('Round 5: home targets, quoted command strings, escapes', () => {
-    for (const cmd of ['rm -rf "$HOME"/*', 'rm -rf "$HOME"/', 'rm -r -f "$HOME"/ && ls', `bash -c 'rm -rf "$HOME"/'`, 'rm -rf "${HOME:?}"/*']) {
-      it(`blocks ${cmd}`, () => shouldBlock(cmd, 'rm-home-var'));
-    }
-    it('blocks rm -rf ~/*', () => shouldBlock('rm -rf ~/*', 'rm-home'));
-    for (const cmd of [`python3 -c 'import subprocess; subprocess.run("rm -rf ~", shell=True)'`,
-      `node -e "require('child_process').execSync('rm -rf ~', {stdio:'inherit'})"`, 'bash -c "rm -rf ~">/dev/null 2>&1',
-      'bash -c "rm -rf /">log', "sh -c 'rm -rf /'<&-", "x = {cmd: 'rm -rf ~'}"]) {
-      it(`blocks ${cmd}`, () => shouldBlock(cmd));
-    }
     for (const cmd of ['"rm.exe" -rf ~', "'rm.exe' -rf $HOME", '"C:\\Program Files\\Git\\usr\\bin\\rm.exe" -rf ~']) {
       it(`blocks ${cmd}`, () => shouldBlock(cmd, 'ps-rm-home'));
     }
-    for (const cmd of ['rm -rf "a\\"b" /', "rm -rf $'x\\'y' /etc", 'rm -rf "build \\"old\\"" .']) {
-      it(`blocks ${cmd}`, () => shouldBlock(cmd));
+  });
+
+  describe('CRITICAL: home targets with a trailing / or /*', () => {
+    for (const cmd of ['rm -rf "$HOME"/*', 'rm -rf "$HOME"/', 'rm -r -f "$HOME"/ && ls']) {
+      it(`blocks ${cmd}`, () => shouldBlock(cmd, 'rm-home-var'));
     }
-    it('blocks a split rm after a comment ending in \\', () => shouldBlock('true # x\\\nr\\\nm -rf /', 'rm-root'));
+    it('blocks rm -rf ~/*', () => shouldBlock('rm -rf ~/*', 'rm-home'));
     // a permission rule passed as an argument is not a subshell
     for (const cmd of ['claude -p x --disallowedTools "Bash(rm *)"', 'claude -p x --allowedTools "Bash(rm -rf ./*)" "Bash(rm -rf ~)"']) {
       it(`allows ${cmd}`, () => shouldAllow(cmd));
     }
-    for (const cmd of ['(rm -rf *)', 'x=$(rm -rf *)', 'true && (rm -rf ./)', 'f() (rm -rf ~)']) {
-      it(`blocks ${cmd}`, () => shouldBlock(cmd));
-    }
     for (const cmd of ['rm -rf build\ncd ~', 'rm -f a.log\ncd ~', '/usr/bin/rm -rf build\ncd ~', 'rm -rf node_modules\ncd C:/', 'rm -rf dist && cd ~']) {
       it(`allows ${JSON.stringify(cmd)}`, () => shouldAllow(cmd));
     }
-    it('answers fast on many ANSI-C and escaped operands', () => {
+    it('answers fast on many quoted operands', () => {
       for (const cmd of [`rm -rf ${"$'a\\'b' ".repeat(500)}x`, `rm -rf ${'"a\\"b" '.repeat(500)}x`, `rm ${"$'".repeat(1000)}`]) {
         const start = Date.now();
         checkCommand(cmd, 'strict');

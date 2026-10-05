@@ -389,10 +389,28 @@
 
   <section>
     <h2>Roadmap · next</h2>
+
+    <div class="col-title"><span class="dot next"></span>v0.5 · repo-setup: put each instruction where it belongs</div>
+    <p class="sub-note" style="margin:0 4px 12px">A CLAUDE.md grows with every ticket. Every line costs context in every session, and a "never do X" in it is only a request. repo-setup reads CLAUDE.md and .claude/ and moves what doesn't belong there into the mechanism Claude Code built for it. Based on agentic-kit v0.9.2 (Szymon Kulpinski), slimmed down.</p>
+    <div class="row"><span><b>Instruction for some files only</b> → <code>.claude/rules/&lt;topic&gt;.md</code> with <code>paths:</code>, loads only when Claude reads a matching file</span><span class="status next">move</span></div>
+    <div class="row"><span><b>Conventions of one folder</b> → a <code>CLAUDE.md</code> in that folder</span><span class="status next">move</span></div>
+    <div class="row"><span><b>Multi-step procedure or reference</b> (deploy, release) → a skill; only its description costs context</span><span class="status next">move</span></div>
+    <div class="row"><span><b>"Every time X, do Y"</b> → a hook, drafted only when the command is known from the repo (e.g. its formatter)</span><span class="status next">move</span></div>
+    <div class="row"><span><b>"Never do X"</b> → <code>permissions.deny</code>, enforced instead of requested</span><span class="status next">move</span></div>
+    <div class="row"><span><b>Personal preference</b> → <code>CLAUDE.local.md</code>, git-ignored</span><span class="status next">move</span></div>
+    <div class="sub-note" style="margin-top:8px">Changes compared to v0.9.2: always asks, with a diff per finding (no <code>--no-questions</code>); runs on its own, setup only points to it; git instead of a backup script (commit first); quality checks (vague, contradicting, outdated) left to <code>/doctor prompt-audit</code>; short rule list linking the docs instead of copying them; writes new files with writing-for-agents. Before release: an eval of 3–5 sample repos with the expected moves, each run 3×, measuring hits, stability and tokens. The hackathon repos are the first test data.</div>
+
+    <div style="height:24px"></div>
+
     <div class="grid three">
       <div class="card planned">
-        <h3>Restructure instruction files</h3>
-        <p>A repo-setup skill that moves what doesn't belong in CLAUDE.md into path-scoped rules, skills, hooks or deny rules, asking before each change.</p>
+        <h3>writing-for-agents</h3>
+        <p>Matt Pocock's skill for writing skills, CLAUDE.md and agent prompts that make Claude act the same way every run. Used by repo-setup and when the kit's own skills change.</p>
+        <span class="tag planned">planned · v0.5</span>
+      </div>
+      <div class="card planned">
+        <h3>Fewer false positives in protect-secrets</h3>
+        <p>A heredoc or commit message that mentions a secret file (<code>type</code> and <code>.env</code> in one text, <code>grep</code> for ".env") is blocked like a real read. Narrow the rules to the command, not the text it carries.</p>
         <span class="tag planned">planned</span>
       </div>
       <div class="card planned">

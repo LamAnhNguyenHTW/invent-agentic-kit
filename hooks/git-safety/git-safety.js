@@ -107,7 +107,8 @@ function log(data) {
 // invent patch: branch of the session's cwd (from the hook input), or of the
 // repo named by `git -C <dir>`, not of wherever the hook process happens to run
 function gitDir(cwd, cmd = '') {
-  const dashC = cmd.match(/\bgit(?:\s+(?:-c\s+\S+|--[\w-]+(?:=\S+)?))*\s+-C\s+("[^"]*"|'[^']*'|\S+)/);
+  // `GIT -C dir` too (macOS); `-c` and `-C` differ, so only the command word ignores case
+  const dashC = cmd.match(/\b[Gg][Ii][Tt](?:\s+(?:-c\s+\S+|--[\w-]+(?:=\S+)?))*\s+-C\s+("[^"]*"|'[^']*'|\S+)/);
   return dashC ? path.resolve(cwd || '.', dashC[1].replace(/^["']|["']$/g, '')) : cwd;
 }
 
@@ -119,15 +120,44 @@ function branchIn(dir) {
   }
 }
 
+// invent patch: the command is checked in several forms and blocked if any
+// matches, so normalizing can only add blocks: as written (a `\` ending a
+// comment, or before CRLF, is no continuation); with `\⏎` deleted as bash does
+// (`r\⏎m` is `rm`); with comments stripped first (`# x\⏎r\⏎m`); with `\⏎` as
+// a space. A stripped comment leaves a `;`: it ends the command like the one
+// it stood in, so a rule can't run on through a heredoc body. A form equal to an earlier one apart from whitespace is skipped:
+// each form multiplies the cost of every rule.
+function shellForms(cmd) {
+  const s = String(cmd || '');
+  const deleted = s.replace(/(?<!\\)\\\n/g, '');
+  const forms = [s, deleted];
+  if (s.includes('#')) forms.push(s.replace(/(^|[\s;&|(])#[^\n]*/g, '$1;').replace(/(?<!\\)\\\n/g, ''));
+  forms.push(s.replace(/\\\r?\n\s*/g, ' '));
+  const seen = new Set();
+  return forms.filter((f) => { const k = f.replace(/\s+/g, ' '); return !seen.has(k) && seen.add(k); });
+}
+// Each form also lowercased: macOS and Windows find `RM`, `/bin/RM`, `/ETC`,
+// `GIT` (flags and $VARS keep their case, `-D` ≠ `-d`).
+const lowerWords = (cmd) => cmd.replace(/(?<![\w$-])[A-Za-z][\w.-]*/g, (w) => w.toLowerCase());
+function variants(cmd) {
+  return [...new Set(shellForms(cmd).flatMap((c) => [c, lowerWords(c)]))];
+}
+
 function checkCommand(cmd, branch = null, safetyLevel = SAFETY_LEVEL, { repoType = REPO_TYPE, cwd } = {}) {
   const threshold = LEVELS[safetyLevel] || LEVELS.high;
+  const forms = variants(cmd);
   for (const p of PATTERNS) {
     if (LEVELS[p.level] > threshold) continue;
     if (repoType === 'demo' && DEMO_ALLOWED.has(p.id)) continue; // invent patch: demo repos
-    if (!p.regex.test(cmd)) continue;
+    if (!forms.some((c) => p.regex.test(c))) continue;
 
     if (p.branchOnly) {
-      if (!branch) branch = branchIn(gitDir(cwd, cmd));
+      // The `-C` dir differs between forms (`git -C ../main\⏎ commit`): look up
+      // each distinct one, protected if any is.
+      if (!branch) {
+        const branches = [...new Set(forms.map((c) => gitDir(cwd, c)))].map(branchIn);
+        branch = branches.find((b) => PROTECTED_BRANCHES.includes(b)) ?? branches[0];
+      }
       if (!PROTECTED_BRANCHES.includes(branch)) continue;
     }
 

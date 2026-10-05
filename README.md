@@ -2,15 +2,19 @@
 
 A Claude Code plugin that gives Invent projects a shared way of building with
 Claude: one guided setup, safety hooks and secret-file rules that apply
-automatically, pre-commit quality checks sized to the repo, a suggested workflow for bigger
-tickets, and a review agent that checks the result against the ticket.
+automatically, pre-commit quality checks sized to the repo, a skill that
+moves instructions out of an overgrown `CLAUDE.md` into rules, skills, hooks
+or permissions, a suggested workflow for bigger tickets, and a review agent
+that checks the result against the ticket.
 
 ## What it does
 
 ### 1. Guided setup — `/agentic-kit-setup`
 
-Run it once per project. It asks before every change and never rewrites a
-file silently:
+Run it once per project. It first copies the repo's Claude Code files
+(`CLAUDE.md`, `.claude/`, `.pre-commit-config.yaml`) to
+`./.repo-setup-backup`. Then it asks before every change and never rewrites
+a file silently, except in step 7:
 
 1. **Personal CLAUDE.md** (`~/.claude/CLAUDE.md`) — checks for four core
    coding guidelines (think before coding, simplicity first, surgical changes,
@@ -35,8 +39,20 @@ file silently:
 6. **Statusline and notification** *(optional, personal)* — a two-line
    statusline and a desktop notification when Claude finishes, written into
    your own `~/.claude/settings.json`.
-7. **Done** — summarizes the changes and points to `/doctor` and
-   `/doctor prompt-audit` for tidying up instruction files later.
+7. **Restructure** — runs `/repo-setup` (see below) without questions: it
+   lists what belongs outside `CLAUDE.md`, takes a second backup and applies
+   all of it. The skill asks nothing; Claude Code may still ask you to
+   allow each file change, depending on your permission mode. The Invent
+   block stays as it is.
+8. **Done** — summarizes the changes, gives both restore commands, and
+   points to `/doctor` and `/doctor prompt-audit` for tidying up later.
+
+**Backups.** Each of the two backups is a timestamped folder in
+`./.repo-setup-backup`, kept out of git, and the setup prints a restore
+command for each. The second one undoes only the restructuring; the first
+one puts back every file that existed before the setup, as it was then.
+Files the setup created, and changes to `.gitignore` and `~/.claude`, stay
+in place. Step 7 never adds back what you declined earlier in the setup.
 
 Step 5 only runs for Python projects in a git repo (`.py` files anywhere in
 the repo count). The pre-commit checks cover Python files only; there are no
@@ -143,15 +159,19 @@ Our changes are marked `invent patch:` in the scripts and covered by
   demo/prod repo type above; catches `git branch --delete --force main`.
 - All three no longer crash (and so fail open) when `HOME` is unset.
 
-Run the tests with `node --test "hooks/**/*.test.js" "extras/**/*.test.js"` (Node ≥ 21).
+Run the tests with
+`node --test "hooks/**/*.test.js" "extras/**/*.test.js" "skills/**/*.test.js"`
+(Node ≥ 21).
 
 **Deny rules** are written into the project's `.claude/settings.json` by
-setup step 4. Claude Code enforces them itself, before any hook runs and on
-every OS: Claude's file tools, Grep, and file commands like `cat` in Bash
-can't read or edit `.env`/`.env.*` (except `.env.example`, `.sample`,
-`.template`), `*.pem`, `*.key`, `credentials.json`, `secrets.*`,
-`~/.ssh` and `~/.aws`. A script that opens files itself (`python -c ...`)
-is not covered — that needs Claude Code's sandbox.
+setup step 4. Claude Code enforces them itself, on every OS: Claude's file
+tools (Read, Edit, Write, Grep, Glob) can't read or edit `.env`/`.env.*`
+(except `.env.example`, `.sample`, `.template`), `*.pem`, `*.key`,
+`credentials.json`, `secrets.*`, `~/.ssh` and `~/.aws`. They don't reliably
+stop shell commands (a test let `head -1 .env` through); the
+`protect-secrets` hook covers `cat`, `head`, `grep` and co. A script that
+opens files itself (`python -c ...`) is covered by neither, which needs
+Claude Code's sandbox.
 
 **Pre-commit hooks** are written into the project's `.pre-commit-config.yaml`
 by setup step 5. They run on every `git commit`, whoever makes the commit —
@@ -216,6 +236,7 @@ fills goal and criteria, everything else stays the same.
 | | Use |
 |---|---|
 | `/agentic-kit-setup` | The guided setup above |
+| `/repo-setup` | Sets a repo up for Claude Code: runs `/init` if there is no `CLAUDE.md`, otherwise proposes which instructions to move into rules, skills, hooks or permissions. The last step of `/agentic-kit-setup`; also runs on its own |
 | `/grill-with-docs` | Grilling plus domain modeling: interview, glossary and ADRs in one go. Only you can start it; Claude uses `grilling` + `domain-modeling` directly |
 | `/grilling` | The interview alone, without docs, in rounds of numbered questions with recommended answers |
 | `domain-modeling` | Writes `GLOSSARY.md` and ADRs; loaded by `grill-with-docs` |
@@ -226,6 +247,20 @@ fills goal and criteria, everything else stays the same.
 [mattpocock/skills](https://github.com/mattpocock/skills), `ponytail` from
 [DietrichGebert/ponytail](https://github.com/DietrichGebert/ponytail) —
 unchanged, so they can be updated by copying the upstream files again.
+
+**`/repo-setup`** (by Szymon Kulpinski). In a repo without a `CLAUDE.md` it
+starts Claude Code's built-in `/init` (or creates a `CLAUDE.md` that imports
+an existing `AGENTS.md`). In a repo that has one, it reads `CLAUDE.md` and
+the project's `.claude/` folder and lists what belongs somewhere else:
+instructions for some files only become path-scoped rules, procedures become
+skills, "always" and "never" instructions that must hold become hooks or
+deny rules, and personal preferences move to `CLAUDE.local.md`. You pick the
+findings to apply. Before the first change it copies the affected files to a
+backup folder (`./.repo-setup-backup` by default, or one you name) and waits
+for your OK. The rules it applies are in `skills/repo-setup/baseline.md`,
+each with its source in Anthropic's documentation. Started by
+`/agentic-kit-setup` it gets `--no-questions`: it applies every finding and
+backs up to the default folder without asking.
 
 **Built into Claude Code**, worth knowing alongside the kit (each only
 proposes changes):
@@ -253,8 +288,12 @@ To see or disable the hooks: `/hooks`, or turn the plugin off in `/plugin`.
 
 ### Requirements
 
-- **Node.js ≥ 18** — all Claude Code hooks are Node scripts.
+- **Node.js ≥ 18** — all Claude Code hooks are Node scripts. Claude Code
+  itself runs without Node, but then every guard of the kit silently stays
+  off; setup checks for Node first.
 - **git** — for `git-safety` and the pre-commit hooks.
 - **Python projects:** a project venv managed by `uv`, `poetry` or pip, plus
   `pre-commit`. Setup offers to install `pre-commit` and `ty` if they're
   missing.
+- **Behind a company proxy:** if `uv` fails with `invalid peer certificate`,
+  set `UV_SYSTEM_CERTS=1` so it trusts the system certificate store.

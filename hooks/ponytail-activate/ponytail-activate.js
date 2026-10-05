@@ -15,12 +15,25 @@
 const fs = require('fs');
 const path = require('path');
 
-if (process.env.PONYTAIL_MODE === 'off') process.exit(0);
+// Parts of the upstream text that don't apply to every Invent session: a
+// hardware aside and a pointer to another plugin. The skill file stays as
+// upstream ships it; if upstream rewords them, they simply stay in.
+// `\r?\n`: a Windows checkout has CRLF line endings.
+const OFF_TOPIC = [
+  /\r?\n\r?\nHardware is never the ideal[\s\S]*?(?=\r?\n\r?\n)/,
+  / \(pair with Caveman for\s+terse prose\)/,
+];
+const offTopicRemoved = (text) => OFF_TOPIC.reduce((t, re) => t.replace(re, ''), text);
 
-try {
-  const skill = fs.readFileSync(path.join(__dirname, '..', '..', 'skills', 'ponytail', 'SKILL.md'), 'utf8');
-  // SessionStart stdout is added to Claude's context; drop the frontmatter.
-  console.log(skill.replace(/^---[\s\S]*?\n---\s*/, ''));
-} catch {
-  // Missing skill must not break session start.
+if (require.main === module) {
+  if (process.env.PONYTAIL_MODE === 'off') process.exit(0);
+  try {
+    const skill = fs.readFileSync(path.join(__dirname, '..', '..', 'skills', 'ponytail', 'SKILL.md'), 'utf8');
+    // SessionStart stdout is added to Claude's context; drop the frontmatter.
+    console.log(offTopicRemoved(skill.replace(/^---[\s\S]*?\n---\s*/, '')));
+  } catch {
+    // Missing skill must not break session start.
+  }
+} else {
+  module.exports = { offTopicRemoved };
 }

@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>invent-agentic-kit — v0.3</title>
+<title>invent-agentic-kit — v0.4</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -162,6 +162,8 @@
   .flow-box.you .n { color: var(--blue-text); background: var(--blue-dim); border-color: var(--blue-line); }
   .flow-box.agent .n { color: var(--teal); background: var(--teal-dim); border-color: var(--teal-line); }
   .flow-box.done { border-style: dashed; }
+  .flow.seven .flow-box { padding: 18px 10px; }
+  .flow.seven .arrow { padding: 0 3px; }
   .flow-box .t { font-family: var(--display); font-weight: 600; font-size: 16px; }
   .flow-box .d { color: var(--muted); font-size: 12.5px; line-height: 1.45; }
   .flow-box .o {
@@ -175,8 +177,9 @@
   }
   .grid.three { grid-template-columns: repeat(3, 1fr); }
   @media (max-width: 900px) {
-    .flow { flex-wrap: wrap; row-gap: 12px; }
-    .flow-box { flex: 1 1 150px; }
+    /* Three per row and no arrows, so no arrow is left dangling at a row end. */
+    .flow { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+    .arrow { display: none; }
     .grid.three { grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); }
   }
   .note { font-size: 13.5px; line-height: 1.55; color: var(--muted); margin: 18px 4px 0; max-width: 820px; }
@@ -203,9 +206,7 @@
   .tag.agent { color: var(--teal); background: var(--teal-dim); }
   .tag.planned { color: var(--warn); background: var(--warn-dim); }
 
-  /* --- hooks two-column --- */
-  .hooks-cols { display: grid; grid-template-columns: 1.6fr 1fr; gap: 24px; }
-  @media (max-width: 760px) { .hooks-cols { grid-template-columns: 1fr; } }
+  /* --- hooks list --- */
   .col-title {
     font-family: var(--body); font-size: 12px; font-weight: 600;
     letter-spacing: .1em; text-transform: uppercase; color: var(--ink);
@@ -228,6 +229,7 @@
   }
   .status.live { background: var(--good-dim); color: var(--good); }
   .status.next { background: var(--warn-dim); color: var(--warn); }
+  .status.opt { background: var(--panel-2); color: var(--muted); border: 1px solid var(--border); }
   .sub-note { font-size: 12px; line-height: 1.5; color: var(--faint); margin: -4px 4px 12px; }
 
   footer {
@@ -239,9 +241,9 @@
   @media (max-width: 640px) {
     .wrap { padding: 40px 16px 64px; }
     h1 { font-size: 34px; }
-    .flow { flex-direction: column; }
+    .flow { display: flex; flex-direction: column; gap: 0; }
     .flow-box { flex: none; }
-    .arrow { transform: rotate(90deg); padding: 2px 0; }
+    .arrow { display: flex; transform: rotate(90deg); padding: 2px 0; }
     .row { flex-direction: column; align-items: flex-start; }
   }
 </style>
@@ -254,75 +256,90 @@
 <div class="wrap">
 
   <header class="hero">
-    <span class="kicker">invent-agentic-kit · plugin · v0.3</span>
+    <span class="kicker">invent-agentic-kit · plugin · v0.4</span>
     <h1>One setup step.<br><span class="accent">A shared way of building.</span></h1>
     <p>A Claude Code plugin that bootstraps Invent's agentic-coding conventions, gives every project a repeatable workflow for bigger changes, and guards against unsafe commands and leaked secrets on its own.</p>
   </header>
 
   <section>
     <h2>Install once, then <span class="accent">/agentic-kit-setup</span> per project</h2>
-    <div class="flow">
+    <div class="flow seven">
       <div class="flow-box">
         <div class="n">1</div>
         <div class="t">Personal CLAUDE.md</div>
         <div class="d">Checks for Karpathy's 4 core guidelines, offers to add what's missing</div>
-        <div class="o">~/.claude/CLAUDE.md</div>
+        <div class="o">~/.claude/<wbr>CLAUDE.md</div>
       </div>
-      <div class="arrow">→</div>
-      <div class="flow-box">
+      <div class="arrow" aria-hidden="true">→</div>
+      <div class="flow-box you">
         <div class="n">2</div>
-        <div class="t">Project CLAUDE.md</div>
-        <div class="d">Adds the ticket workflow and the tooling summary, updates an older block</div>
-        <div class="o">CLAUDE.md</div>
+        <div class="t">Repo type</div>
+        <div class="d">Demo or prod? Decides how strict git-safety and pre-commit are</div>
+        <div class="o">your answer</div>
       </div>
-      <div class="arrow">→</div>
+      <div class="arrow" aria-hidden="true">→</div>
       <div class="flow-box">
         <div class="n">3</div>
-        <div class="t">Secret-file rules</div>
-        <div class="d">Deny rules for .env, keys and credentials, enforced by Claude Code itself. .env git-ignored</div>
-        <div class="o">.claude/settings.json · .gitignore</div>
+        <div class="t">Project CLAUDE.md</div>
+        <div class="d">Runs /init if there is none (or imports AGENTS.md), then adds the ticket workflow and the tooling summary for the repo type</div>
+        <div class="o">CLAUDE.md</div>
       </div>
-      <div class="arrow">→</div>
+      <div class="arrow" aria-hidden="true">→</div>
       <div class="flow-box">
         <div class="n">4</div>
-        <div class="t">Pre-commit checks</div>
-        <div class="d">Demo or prod repo? Sets up radon, xenon, ruff and optional ty as advisory or blocking. Python only</div>
-        <div class="o">.pre-commit-config.yaml</div>
+        <div class="t">Project settings</div>
+        <div class="d">Deny rules for .env, keys and credentials, plus the repo type for the hooks. .env git-ignored</div>
+        <div class="o">.claude/<wbr>settings.json · .gitignore</div>
       </div>
-      <div class="arrow">→</div>
-      <div class="flow-box done">
+      <div class="arrow" aria-hidden="true">→</div>
+      <div class="flow-box">
         <div class="n">5</div>
-        <div class="t">Ready to build</div>
-        <div class="d">Skills, hooks, rules and workflow are active for this project</div>
+        <div class="t">Pre-commit checks</div>
+        <div class="d">radon, xenon, ruff and optional ty, advisory in demo and blocking in prod repos</div>
+        <div class="o">.pre-commit-<wbr>config.yaml</div>
+      </div>
+      <div class="arrow" aria-hidden="true">→</div>
+      <div class="flow-box done">
+        <div class="n">6</div>
+        <div class="t">Statusline</div>
+        <div class="d">Optional, personal: statusline and a desktop notification when Claude finishes</div>
+        <div class="o">~/.claude/<wbr>settings.json</div>
+      </div>
+      <div class="arrow" aria-hidden="true">→</div>
+      <div class="flow-box">
+        <div class="n">7</div>
+        <div class="t">Done</div>
+        <div class="d">Summary of the changes, plus /doctor and /doctor prompt-audit for tidying instruction files later</div>
+        <div class="o">summary</div>
       </div>
     </div>
-    <p class="note">Install: <code>/plugin marketplace add &lt;kit folder or git URL&gt;</code>, then <code>/plugin install invent-agentic-kit@invent-agentic-kit</code>. Setup shows every change and asks before it writes. Step 4 only runs for Python projects in a git repo; its checks cover Python files only.</p>
+    <p class="note"><b>Then you're ready to build:</b> skills, hooks, rules and workflow are active for this project. Install: <code>/plugin marketplace add &lt;kit folder or git URL&gt;</code>, then <code>/plugin install invent-agentic-kit@invent-agentic-kit</code>. Setup shows every change and asks before it writes. Step 5 only runs for Python projects in a git repo; its checks cover Python files only.</p>
   </section>
 
   <section>
     <h2>Bigger changes &amp; tickets: the suggested loop</h2>
     <div class="flow">
       <div class="flow-box"><div class="n">1</div><div class="t">Grill it</div><div class="d">grill-with-docs stress-tests the approach</div><div class="o">GLOSSARY.md · ADRs</div></div>
-      <div class="arrow">→</div>
+      <div class="arrow" aria-hidden="true">→</div>
       <div class="flow-box"><div class="n">2</div><div class="t">Plan it</div><div class="d">Criteria with a test each, simplified with ponytail</div><div class="o">plans/&lt;branch&gt;.md</div></div>
-      <div class="arrow">→</div>
+      <div class="arrow" aria-hidden="true">→</div>
       <div class="flow-box you"><div class="n">3</div><div class="t">Approve it</div><div class="d">You read and approve the plan file before code</div><div class="o">your approval</div></div>
-      <div class="arrow">→</div>
-      <div class="flow-box"><div class="n">4</div><div class="t">Implement it</div><div class="d">On a feature branch, subagents capped at Sonnet</div><div class="o">feature branch</div></div>
-      <div class="arrow">→</div>
+      <div class="arrow" aria-hidden="true">→</div>
+      <div class="flow-box"><div class="n">4</div><div class="t">Implement it</div><div class="d">On a feature branch (optional in demo), subagents capped at Sonnet</div><div class="o">feature branch</div></div>
+      <div class="arrow" aria-hidden="true">→</div>
       <div class="flow-box"><div class="n">5</div><div class="t">Verify it</div><div class="d">Tests per criterion and pre-commit green</div><div class="o">criteria ticked</div></div>
-      <div class="arrow">→</div>
+      <div class="arrow" aria-hidden="true">→</div>
       <div class="flow-box agent"><div class="n">6</div><div class="t">Review it</div><div class="d">pr-review checks the branch against the plan</div><div class="o">verdict → PR</div></div>
     </div>
     <p class="note"><b>Not required, and nothing enforces it.</b> It helps most when you don't know the codebase yet: grilling makes Claude dig through the code and ask you questions, so you understand it before anything changes. If you already know what to change and where, skip the loop and tell Claude directly; ponytail is always on. The plan file is committed with the change, so every step and every reviewer works from the same acceptance criteria.</p>
   </section>
 
   <section>
-    <h2>Skills &amp; agent that shape the coding experience</h2>
+    <h2>Skills &amp; agents that shape the coding experience</h2>
     <div class="grid three">
       <div class="card skill">
         <h3>grill-with-docs</h3>
-        <p>Interviews you in rounds, each question with a recommended answer. Writes resolved terms to GLOSSARY.md and hard-to-reverse decisions to ADRs.</p>
+        <p>Interviews you in rounds, each question with a recommended answer. Writes resolved terms to GLOSSARY.md and hard-to-reverse decisions to ADRs. Only you can start it.</p>
         <span class="tag skill">/grill-with-docs</span>
       </div>
       <div class="card skill">
@@ -338,11 +355,11 @@
       <div class="card skill">
         <h3>domain-modeling</h3>
         <p>Formats for the glossary and ADRs, so design decisions stay traceable. Used by grill-with-docs.</p>
-        <span class="tag skill">SKILL.md</span>
+        <span class="tag skill">via grill-with-docs</span>
       </div>
       <div class="card skill">
         <h3>agentic-kit-setup</h3>
-        <p>One-time onboarding: CLAUDE.md files, secret-file rules and pre-commit checks, up to the Invent standard.</p>
+        <p>One-time onboarding: CLAUDE.md files, repo type, secret-file rules, pre-commit checks and an optional statusline, up to the Invent standard.</p>
         <span class="tag skill">/agentic-kit-setup</span>
       </div>
       <div class="card agent">
@@ -355,30 +372,44 @@
 
   <section>
     <h2>Quality gates via hooks, rules &amp; pre-commit</h2>
-    <div class="hooks-cols">
+    <div>
       <div>
         <div class="col-title"><span class="dot live"></span>Active now</div>
         <div class="row"><span><b>Deny rules</b> block reading or editing .env, keys and credentials in Claude's file tools and shell <span class="when">· settings.json</span></span><span class="status live">live</span></div>
         <div class="row"><span><b>protect-secrets</b> blocks reads, copies and leaks of secrets in Read/Edit/Write/Grep/Bash/PowerShell <span class="when">· PreToolUse</span></span><span class="status live">live</span></div>
         <div class="sub-note">Patched for Windows paths and the PowerShell tool; .env slipped through on Windows before.</div>
         <div class="row"><span><b>block-dangerous-commands</b> stops destructive commands like <code>rm -rf ~</code> or <code>git reset --hard</code> <span class="when">· PreToolUse</span></span><span class="status live">live</span></div>
-        <div class="row"><span><b>git-safety</b> blocks commits, resets and pushes on main/master. Work on a feature branch <span class="when">· PreToolUse</span></span><span class="status live">live</span></div>
+        <div class="row"><span><b>git-safety</b> prod: blocks commits, rebases, resets and pushes on main/master, so work on a feature branch. Demo: relaxed, only deleting or force-pushing main and gh repo/release deletion stay blocked <span class="when">· PreToolUse</span></span><span class="status live">live</span></div>
         <div class="row"><span><b>ponytail-activate</b> loads the ponytail rules into every session <span class="when">· SessionStart</span></span><span class="status live">live</span></div>
-        <div class="row"><span><b>Statusline &amp; notification</b> optional, per person: context, cost, today's spend and git branch under the prompt, plus a desktop notification when Claude finishes <span class="when">· setup step 5</span></span><span class="status live">optional</span></div>
-        <div class="row"><span><b>radon · xenon · ruff · ty</b> complexity, lint, format and types of Python files on every commit. Blocking in prod repos, advisory in demo repos <span class="when">· pre-commit</span></span><span class="status live">live</span></div>
-      </div>
-      <div>
-        <div class="col-title"><span class="dot next"></span>Roadmap · v0.3</div>
-        <div class="row"><span><b>Pre-commit for other languages</b> JS/TS (Prettier, ESLint) and others; today only Python is checked</span><span class="status next">planned</span></div>
-        <div class="row"><span><b>Testing guidelines</b> which tests a change needs before merge</span><span class="status next">planned</span></div>
-        <div class="row"><span><b>Sandbox guidance</b> hooks and rules match text; a script that opens files itself gets through</span><span class="status next">planned</span></div>
+        <div class="row"><span><b>Statusline &amp; notification</b> optional, per person: context, cost, today's spend and git branch under the prompt, plus a desktop notification when Claude finishes <span class="when">· setup step 6</span></span><span class="status opt">optional</span></div>
+        <div class="row"><span><b>radon · xenon · ruff · ty</b> complexity, lint, format and types on every commit. Blocking in prod repos, advisory in demo repos <span class="when">· pre-commit</span></span><span class="status live">live</span></div>
       </div>
     </div>
   </section>
 
   <section>
-    <h2>Future · v0.3</h2>
-    <div class="grid">
+    <h2>Roadmap · next</h2>
+    <div class="grid three">
+      <div class="card planned">
+        <h3>Restructure instruction files</h3>
+        <p>A repo-setup skill that moves what doesn't belong in CLAUDE.md into path-scoped rules, skills, hooks or deny rules, asking before each change.</p>
+        <span class="tag planned">planned</span>
+      </div>
+      <div class="card planned">
+        <h3>Pre-commit for other languages</h3>
+        <p>JS/TS (Prettier, ESLint) and others; today only Python files are checked.</p>
+        <span class="tag planned">planned</span>
+      </div>
+      <div class="card planned">
+        <h3>Testing guidelines</h3>
+        <p>Which tests a change needs before merge, so "verify it" means the same thing in every repo.</p>
+        <span class="tag planned">planned</span>
+      </div>
+      <div class="card planned">
+        <h3>Sandbox guidance</h3>
+        <p>Hooks and deny rules match text; a script that opens files itself gets through. The sandbox closes that gap.</p>
+        <span class="tag planned">planned</span>
+      </div>
       <div class="card planned">
         <h3>Jira in the plan file</h3>
         <p>A connector fills goal and acceptance criteria in plans/&lt;branch&gt;.md from the ticket. The rest of the workflow stays the same.</p>
@@ -405,7 +436,7 @@
   </section>
 
   <footer>
-    invent-agentic-kit <span class="v">v0.3</span> · plugin install, patched safety hooks, secret-file rules, plan file and pr-review agent. Details and reasoning in README.md.
+    invent-agentic-kit <span class="v">v0.4</span> · plugin install, demo/prod repo type, patched safety hooks, secret-file rules, plan file and pr-review agent. Details and reasoning in README.md.
   </footer>
 
 </div>

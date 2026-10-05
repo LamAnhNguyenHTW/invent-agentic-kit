@@ -168,7 +168,9 @@ function render(input, daily) {
     const slash = (p) => p.replace(/\\/g, '/');
     const dir = slash(cwd);
     const home = slash(os.homedir());
-    line2.push(color(dir.toLowerCase().startsWith(home.toLowerCase()) ? '~' + dir.slice(home.length) : dir, 36));
+    const lower = dir.toLowerCase();
+    const inHome = lower === home.toLowerCase() || lower.startsWith(home.toLowerCase().replace(/\/$/, '') + '/');
+    line2.push(color(inHome ? '~' + dir.slice(home.replace(/\/$/, '').length) : dir, 36));
   }
 
   return [line1, line2].filter((l) => l.length).map((l) => l.join('  ')).join('\n');

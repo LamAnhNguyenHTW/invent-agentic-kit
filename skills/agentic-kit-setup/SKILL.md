@@ -91,9 +91,15 @@ for every repo, not only Python ones.
 Claude Code reads `AGENTS.md` only while the project has no `CLAUDE.md`, so a
 `CLAUDE.md` next to an `AGENTS.md` must import it with an `@AGENTS.md` line.
 
-1. Check whether `./CLAUDE.md` and `./AGENTS.md` exist. A `.claude/CLAUDE.md`
-   counts as the project `CLAUDE.md` too: use it below in place of
-   `./CLAUDE.md`, and never create a second one next to it.
+1. Find the project `CLAUDE.md`. Claude Code loads `./CLAUDE.md` and
+   `./.claude/CLAUDE.md` alike, so:
+   - only `./.claude/CLAUDE.md` exists → it is the project `CLAUDE.md`;
+   - both exist → `./CLAUDE.md` is the project `CLAUDE.md`;
+   - neither exists → there is none.
+   "`CLAUDE.md`" below means that file; never create a second one next to
+   an existing one. Look for an existing Invent block in both files: if one
+   holds it, that is the file to update. Then check whether `./AGENTS.md`
+   exists.
    - **No `CLAUDE.md`, no `AGENTS.md`:** give the repo a base `CLAUDE.md`
      first, so the Invent block is not all it holds: tell the user you are
      starting the built-in `/init`, and invoke the `init` skill with the

@@ -50,7 +50,9 @@ a file silently, except in step 7:
 **Backups.** Each of the two backups is a timestamped folder in
 `./.repo-setup-backup`, kept out of git, and the setup prints a restore
 command for each. The second one undoes only the restructuring; the first
-one brings the repo back to how it was before the setup.
+one puts back every file that existed before the setup, as it was then.
+Files the setup created, and changes to `.gitignore` and `~/.claude`, stay
+in place. Step 7 never adds back what you declined earlier in the setup.
 
 Step 5 only runs for Python projects in a git repo (`.py` files anywhere in
 the repo count). The pre-commit checks cover Python files only; there are no
@@ -162,12 +164,14 @@ Run the tests with
 (Node ≥ 21).
 
 **Deny rules** are written into the project's `.claude/settings.json` by
-setup step 4. Claude Code enforces them itself, before any hook runs and on
-every OS: Claude's file tools, Grep, and file commands like `cat` in Bash
-can't read or edit `.env`/`.env.*` (except `.env.example`, `.sample`,
-`.template`), `*.pem`, `*.key`, `credentials.json`, `secrets.*`,
-`~/.ssh` and `~/.aws`. A script that opens files itself (`python -c ...`)
-is not covered — that needs Claude Code's sandbox.
+setup step 4. Claude Code enforces them itself, on every OS: Claude's file
+tools (Read, Edit, Write, Grep, Glob) can't read or edit `.env`/`.env.*`
+(except `.env.example`, `.sample`, `.template`), `*.pem`, `*.key`,
+`credentials.json`, `secrets.*`, `~/.ssh` and `~/.aws`. They don't reliably
+stop shell commands (a test let `head -1 .env` through); the
+`protect-secrets` hook covers `cat`, `head`, `grep` and co. A script that
+opens files itself (`python -c ...`) is covered by neither, which needs
+Claude Code's sandbox.
 
 **Pre-commit hooks** are written into the project's `.pre-commit-config.yaml`
 by setup step 5. They run on every `git commit`, whoever makes the commit —
@@ -284,8 +288,12 @@ To see or disable the hooks: `/hooks`, or turn the plugin off in `/plugin`.
 
 ### Requirements
 
-- **Node.js ≥ 18** — all Claude Code hooks are Node scripts.
+- **Node.js ≥ 18** — all Claude Code hooks are Node scripts. Claude Code
+  itself runs without Node, but then every guard of the kit silently stays
+  off; setup checks for Node first.
 - **git** — for `git-safety` and the pre-commit hooks.
 - **Python projects:** a project venv managed by `uv`, `poetry` or pip, plus
   `pre-commit`. Setup offers to install `pre-commit` and `ty` if they're
   missing.
+- **Behind a company proxy:** if `uv` fails with `invalid peer certificate`,
+  set `UV_SYSTEM_CERTS=1` so it trusts the system certificate store.

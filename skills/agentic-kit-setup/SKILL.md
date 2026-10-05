@@ -10,9 +10,15 @@ Never silently rewrite a file — always show the exact block you intend to
 insert and ask the user for explicit confirmation before writing it. The one
 exception is Step 7, which the backups cover.
 
-## Step 0 — Back up
+## Step 0 — Check Node, back up
 
-Find, with Glob, the files this setup may change:
+First run `node --version`. The kit's hooks are Node scripts, and without
+Node they fail silently, so none of its guards would run. If the command
+fails or prints a version below 18, tell the user to install Node.js 18 or
+newer (https://nodejs.org), restart Claude Code and run `/agentic-kit-setup`
+again, and stop.
+
+Then find, with Glob, the files this setup may change:
 
 - `CLAUDE.md`, `.claude/CLAUDE.md`, `CLAUDE.local.md`, `AGENTS.md`
 - `CLAUDE.md` files in subdirectories
@@ -85,7 +91,9 @@ for every repo, not only Python ones.
 Claude Code reads `AGENTS.md` only while the project has no `CLAUDE.md`, so a
 `CLAUDE.md` next to an `AGENTS.md` must import it with an `@AGENTS.md` line.
 
-1. Check whether `./CLAUDE.md` and `./AGENTS.md` exist.
+1. Check whether `./CLAUDE.md` and `./AGENTS.md` exist. A `.claude/CLAUDE.md`
+   counts as the project `CLAUDE.md` too: use it below in place of
+   `./CLAUDE.md`, and never create a second one next to it.
    - **No `CLAUDE.md`, no `AGENTS.md`:** give the repo a base `CLAUDE.md`
      first, so the Invent block is not all it holds: tell the user you are
      starting the built-in `/init`, and invoke the `init` skill with the
@@ -97,7 +105,8 @@ Claude Code reads `AGENTS.md` only while the project has no `CLAUDE.md`, so a
      and ask whether to create it.
    - **`CLAUDE.md` and `AGENTS.md`, without an `@AGENTS.md` line:** tell the
      user Claude ignores `AGENTS.md` right now, and ask whether to add
-     `@AGENTS.md` as the first line of `CLAUDE.md`. Then continue as below.
+     `@AGENTS.md` as the first line of `CLAUDE.md`. Then continue with the
+     next case.
    - **`CLAUDE.md` exists:** read it and use your judgment to check whether it
      already has an "Invent Project Guidelines" section (substance, not
      exact title).
@@ -218,9 +227,10 @@ describe them. In either repo type:
 
 ## Step 4 — Project settings: deny rules and repo type (./.claude/settings.json)
 
-Claude Code's own permission rules stop Claude's file tools, and file commands
-like `cat` in Bash, from touching these paths — on every OS, before any hook
-runs. The `env` entry tells the `git-safety` hook the repo type from Step 2;
+Claude Code's own permission rules stop Claude's file tools (Read, Edit,
+Write, Grep, Glob) from touching these paths, on every OS. They don't
+reliably stop shell commands such as `head .env`; the kit's `protect-secrets`
+hook covers those. The `env` entry tells the `git-safety` hook the repo type from Step 2;
 hooks read it on every call. Project settings are committed, so both apply
 to everyone on the team.
 
@@ -341,6 +351,12 @@ Step 6.
    reformatted, say how many and ask whether to format them now as a
    separate commit (`pre-commit run ruff-format --all-files`) or leave it:
    each file then gets formatted the first time a commit touches it.
+
+If a `uv` or `uvx` command fails with `invalid peer certificate` or
+`UnknownIssuer`, a company proxy re-signs HTTPS: tell the user to set
+`UV_SYSTEM_CERTS=1` (uv then trusts the Windows/macOS certificate store,
+e.g. under `"env"` in `~/.claude/settings.json` or in the shell profile) and
+retry. Don't switch off TLS checks.
 
 radon, xenon and ruff are installed by pre-commit itself in isolated
 environments — nothing to add to the project. `ty` runs from the project
@@ -489,13 +505,20 @@ leaves the Invent block alone.
    each file change, depending on the permission mode.
 2. Invoke the `repo-setup` skill with the Skill tool and the arguments
    `--no-questions`.
+3. If the user declined something in Steps 1–6 (the Invent block, a
+   `CLAUDE.md`, deny rules), skip any repo-setup finding that would create
+   or add it after all, and name it in Step 8. `--no-questions` applies only
+   to repo-setup's own findings, not to what the user already turned down.
 
 ## Step 8 — Done
 
 Confirm all files are in the desired state and summarize what changed. Give
-both restore commands: the one from Step 7 undoes only the restructuring,
-the one from Step 0 brings the repo back to how it was before this setup.
-The backup folder can be deleted once the user is happy.
+both restore commands. The one from Step 7 undoes only the restructuring.
+The one from Step 0 puts back every file that existed before this setup, as
+it was then. Files this setup created (a new `CLAUDE.md`, `.claude/settings.json`,
+`.pre-commit-config.yaml`, rules and skills from Step 7) stay in place, and so
+do changes to `.gitignore` and to `~/.claude`; delete or revert those by hand
+if needed. The backup folder can be deleted once the user is happy.
 
 Then point to Claude Code's built-in checks for tidying up the instruction
 files later. Both only propose changes and edit nothing without the user's OK:

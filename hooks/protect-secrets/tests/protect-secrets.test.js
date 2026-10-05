@@ -874,7 +874,9 @@ describe('grep-env bash pattern (demo-take bypass 1)', () => {
   it('blocks a double-quoted grep of .env', () => bashBlocked('grep "API_KEY" .env', 'grep-env'));
   it('blocks a double-quoted .env filename', () => bashBlocked('grep KEY ".env"', 'grep-env'));
   it('blocks a single-quoted .env filename', () => bashBlocked("grep KEY '.env'", 'grep-env'));
-  it('blocks a quoted path to .env', () => bashBlocked('grep "/tmp/.env"', 'grep-env'));
+  it('blocks a quoted path to .env', () => bashBlocked('grep KEY "/tmp/.env"', 'grep-env'));
+  // with no file operand, grep searches stdin for the text
+  it('allows grep for the text /tmp/.env on stdin', () => bashAllowed('grep "/tmp/.env"'));
   it('blocks a single-quoted .env.local filename', () => bashBlocked("rg KEY '.env.local'", 'grep-env'));
   it('blocks awk with a quoted program against .env.local', () => bashBlocked('awk -F= "/KEY/{print}" .env.local', 'grep-env'));
   it('blocks grep of .env after another command', () => bashBlocked('cat foo && grep X .env', 'grep-env'));
